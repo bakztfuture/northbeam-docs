@@ -19,8 +19,8 @@
 ## 3. Error handling and validation
 
 - [ ] 3.1 Implement `AppError` and its handler returning flat `{code, title, message?}`; verify a test route raising `AppError(409, ...)` returns that body, without `message` when it is `None`
-- [ ] 3.2 Implement the sqlite error mapping (slug UNIQUE to 409, FK failure to 409, locked/busy to 503 with `Retry-After: 1`, everything else to 500) and the generic 500 handler, which logs the traceback; verify with tests that each case returns the right status and that a 500 body contains only `code` and `title`
-- [ ] 3.3 Implement Pydantic request and response models (camelCase aliases, slug regex, non-blank title and body, title max 200, tag normalization and limit, `expectedDraftVersion >= 1`, `extra="forbid"` on draft saves, UUID path ids); verify with unit tests for each rule, including that a malformed id returns the default 422
+- [ ] 3.2 Implement the sqlite error mapping (slug UNIQUE to 409, FK failure to 409, locked/busy to 503 without `Retry-After`, everything else to 500) and the generic 500 handler, which logs the traceback; verify with tests that each case returns the right status and that a 500 body contains only `code` and `title`
+- [ ] 3.3 Implement Pydantic request and response models (camelCase aliases, slug regex, non-blank title and body, title max 200, tag normalization (trim, lowercase, de-duplicate) and limit, `expectedDraftVersion >= 1`, `extra="forbid"` on draft saves, UUID path ids); verify with unit tests for each rule, including that a malformed id returns the default 422
 - [ ] 3.4 Add an "Errors" section to the README describing the error format and status codes; verify the examples match the test expectations
 
 ## 4. Article authoring
@@ -53,7 +53,7 @@
 
 ## 8. Durability and locking
 
-- [ ] 8.1 Add the lock-exhaustion test: a second connection holds `BEGIN IMMEDIATE` and the app uses a busy timeout of about 100 ms; verify a draft save returns 503 with `Retry-After`, the draft is unchanged, and a save succeeds once the lock is released (EC-19)
+- [ ] 8.1 Add the lock-exhaustion test: a second connection holds `BEGIN IMMEDIATE` and the app uses a busy timeout of about 100 ms; verify a draft save returns 503 with no `Retry-After` header, the draft is unchanged, and a save succeeds once the lock is released (EC-19)
 - [ ] 8.2 Add the restart test: create, edit, and publish with one app instance, then build a new instance on the same file; verify every article, draft, snapshot, and publication state reads back unchanged (EC-29)
 - [ ] 8.3 Verify `make test` runs the whole backend suite with one command and passes
 
@@ -69,10 +69,9 @@
 - [ ] 10.2 Build the create form held locally, whose first save calls `POST` and then switches to the editor; verify in the browser that an abandoned form stores nothing and that a duplicate slug shows an error and keeps the typed content
 - [ ] 10.3 Build the editor (title, body, tags, read-only slug, status, draft version, `publishedAt`, Save, live preview); verify in the browser that saving increments the version and that the preview sends no requests
 - [ ] 10.4 **Highlighted:** implement `isDirty` (comparing the form to the last saved draft) and disable Publish while dirty, with the hint "Save your changes before publishing"; verify with an (FE) Vitest test that editing disables Publish, and that saving or reverting the edit enables it again
-- [ ] 10.5 Add leave-page protection (`onBeforeRouteLeave` and `beforeunload`) when dirty; verify in the browser that navigating away asks for confirmation and staying keeps the edits
-- [ ] 10.6 Add Publish and Unpublish controls (Unpublish only when `published`), refreshing the article and history afterwards; verify in the browser that the status and history update
-- [ ] 10.7 Add the 409 conflict banner for save, restore, and publish, which keeps the form content and offers "Reload latest" behind a confirmation; verify in the browser with two tabs on the same article
-- [ ] 10.8 Build the version history panel (newest first, current marked, view rendered, restore with confirmation when dirty, delete with confirmation, Delete unavailable with an explanation on the pointed-to snapshot); verify in the browser against EC-07, EC-08, EC-10, and EC-11
+- [ ] 10.5 Add Publish and Unpublish controls (Unpublish only when `published`), refreshing the article and history afterwards; verify in the browser that the status and history update
+- [ ] 10.6 Add the 409 conflict banner for save, restore, and publish, which keeps the form content and offers "Reload latest" behind a confirmation; verify in the browser with two tabs on the same article
+- [ ] 10.7 Build the version history panel (newest first, current marked, view rendered, restore with confirmation when dirty, delete with confirmation, Delete unavailable with an explanation on the pointed-to snapshot); verify in the browser against EC-07, EC-08, EC-10, and EC-11
 
 ## 11. Public reader UI
 

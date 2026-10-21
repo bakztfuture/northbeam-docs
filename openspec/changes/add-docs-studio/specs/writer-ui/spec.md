@@ -54,13 +54,6 @@ The editor SHALL show editable title, Markdown body, and tags; the slug read-onl
 - **WHEN** the writer changes the body and then changes it back to the saved text
 - **THEN** the Publish button is enabled
 
-### Requirement: Warn before leaving with unsaved changes
-When the editor has unsaved changes, leaving the editor (navigating within the app, closing the tab, or reloading) SHALL ask the writer to confirm before discarding them.
-
-#### Scenario: Navigating away with unsaved edits
-- **WHEN** the writer has unsaved changes and tries to open another page
-- **THEN** the UI asks for confirmation, and staying keeps the edits
-
 ### Requirement: Publish and unpublish controls
 The editor SHALL offer Publish for any article and Unpublish only for a `published` article, sending the loaded draft version with Publish. After either action, the status, live snapshot, `published_at`, and history SHALL refresh.
 

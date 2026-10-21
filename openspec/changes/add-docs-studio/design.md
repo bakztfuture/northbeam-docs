@@ -257,7 +257,7 @@ The JSON uses camelCase (Pydantic `alias_generator=to_camel`, `populate_by_name=
 - slug: `^[a-z0-9]+(-[a-z0-9]+)*$`, 1 to 100 characters;
 - title: stripped, 1 to 200 characters;
 - body: at least one non-whitespace character;
-- tags: each one stripped and non-empty, at most 20, duplicates removed while keeping order;
+- tags: each one stripped, lowercased, and non-empty, at most 20, duplicates removed while keeping first-seen order;
 - `expectedDraftVersion`: `int >= 1`.
 
 FastAPI's default 422 handler is left unchanged.
@@ -270,7 +270,7 @@ FastAPI's default 422 handler is left unchanged.
 |---|---|---|
 | `IntegrityError` | `UNIQUE constraint failed: articles.slug` | 409 "Slug already exists" |
 | `IntegrityError` | `FOREIGN KEY constraint failed` (on a snapshot delete) | 409 "Snapshot is in use" |
-| `OperationalError` | `database is locked` or `database is busy` | 503 with `Retry-After: 1` |
+| `OperationalError` | `database is locked` or `database is busy` | 503 "Service temporarily unavailable", no `Retry-After` |
 | anything else, including CHECK and trigger aborts | | 500 |
 
 CHECK and trigger failures stay 500 on purpose. The API never attempts those writes, so reaching one means there is a bug, and returning 409 would hide it.
@@ -321,10 +321,9 @@ The dependency override was chosen because production code stays unchanged and t
   - `saved`: the last draft returned by the API, plus its `draftVersion`;
   - `form`: what is in the inputs.
 
-  `isDirty` is a computed comparison of `form` against `saved` on title, body, and tags. So typing a change and then reverting it clears the dirty state.
-- **Unsaved-change protection.**
-  - Publish is disabled when `isDirty` is true, with the hint "Save your changes before publishing".
-  - `onBeforeRouteLeave` asks for confirmation when dirty, and so does a `beforeunload` listener.
+  `isDirty` is a computed comparison of `form` against `saved` on title, body, and tags. So typing a change and then reverting it clears the dirty state. After a successful save, both `form` and `saved` are replaced with the article the API returns, so normalized tags (for example "API" stored as "api") do not leave the editor looking dirty.
+- **Save routing.** The editor has one Save action backed by two endpoints. With no article id yet (`/studio/new`), Save calls `POST /api/admin/articles`; on 201 the app takes the returned id and draft version and navigates to `/studio/articles/:id`. From then on, Save calls `PATCH /api/admin/articles/{id}/draft` with the loaded `expectedDraftVersion`. The endpoints stay separate because only create accepts a slug and checks it is unique, and only save checks the draft version.
+- **Unsaved-change protection.** Publish is disabled when `isDirty` is true, with the hint "Save your changes before publishing". There is deliberately no leave-page warning; it is out of scope.
 - **Conflicts.** A 409 from save, restore, or publish shows a banner, keeps `form` as it is, and offers "Reload latest". That action fetches the article and replaces both `form` and `saved`, after the writer confirms.
 - **Markdown.** `lib/markdown.ts` exports one `markdown-it` instance with `html: false` and the default `validateLink`, which rejects `javascript:`, `vbscript:`, `file:`, and non-image `data:` URLs. It is used by the preview, snapshot view, and public article page. The output is inserted with `v-html` only from this renderer.
 
@@ -339,4 +338,4 @@ The dependency override was chosen because production code stays unchanged and t
 - [The rollback test recognises the UPDATE by its SQL text] → If the statement is reworded, the test fails loudly, because the publish then succeeds and the test's assertion that it failed breaks. So it cannot pass silently.
 - [Only a single Uvicorn worker is tested] → Correctness comes from SQLite locking, not process memory, so more workers stay correct. This is documented but not tested.
 - [Only the latest saved draft is stored; draft saves have no history] → Saving increments `draft_version` for concurrency but keeps no earlier draft. Published snapshots are the version history. An overwritten unpublished draft cannot be recovered, which is acceptable because the brief's safety net is about publishes. A "save as version" feature would be the extension.
-- [No overall request timeout] → The only time limit is SQLite's busy timeout. It bounds how long a write waits for the lock (5 s by default), not how long a request takes. There is no HTTP deadline, no write queue, and no automatic retry. A request that cannot get the lock returns 503 with `Retry-After`, and the client decides whether to retry. Writes are a few short statements, so a server-side deadline would add complexity without a real case to handle.
+- [No overall request timeout] → The only time limit is SQLite's busy timeout. It bounds how long a write waits for the lock (5 s by default), not how long a request takes. There is no HTTP deadline, no write queue, and no automatic retry. A request that cannot get the lock returns 503 without a `Retry-After` header, and the UI shows the error without retrying; the writer can simply try the action again. Writes are a few short statements, so a server-side deadline would add complexity without a real case to handle.

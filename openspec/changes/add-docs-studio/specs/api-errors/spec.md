@@ -40,11 +40,11 @@ When the database rejects a write because of a uniqueness rule or because a prot
 - **THEN** the request returns 409, not 500
 
 ### Requirement: Database busy returns 503
-When a write cannot get the database lock within the configured busy timeout, the API SHALL return 503 with a `Retry-After` header and a message telling the caller to retry. Any partial transaction SHALL be rolled back first.
+When a write cannot get the database lock within the configured busy timeout, the API SHALL return 503 with a message saying the database is busy. It SHALL NOT send a `Retry-After` header or suggest retrying, and neither the server nor the UI SHALL retry automatically. Any partial transaction SHALL be rolled back first.
 
 #### Scenario: Database is locked
 - **WHEN** another connection holds the write lock for longer than the busy timeout and a writer saves a draft
-- **THEN** the API returns 503 with `{"code": 503, "title": "Service temporarily unavailable", "message": "..."}` and a `Retry-After` header
+- **THEN** the API returns 503 with `{"code": 503, "title": "Service temporarily unavailable", "message": "The database is busy."}` and no `Retry-After` header
 - **AND** the draft is unchanged and later writes succeed once the lock is released
 
 ### Requirement: Unexpected errors are generic

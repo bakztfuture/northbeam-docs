@@ -33,7 +33,7 @@ An article's slug SHALL be set only when the article is created and SHALL NOT be
 - **THEN** the slug is not changed
 
 ### Requirement: Validate article input
-The API SHALL reject invalid input with 422. A slug SHALL be 1 to 100 characters of lowercase letters, digits, and single hyphens between them. Title and body SHALL contain at least one non-whitespace character; the title SHALL be at most 200 characters. Tags SHALL be a list of non-blank strings.
+The API SHALL reject invalid input with 422. A slug SHALL be 1 to 100 characters of lowercase letters, digits, and single hyphens between them. Title and body SHALL contain at least one non-whitespace character; the title SHALL be at most 200 characters. Tags SHALL be a list of non-blank strings, stored trimmed, lowercased, and without duplicates, in first-seen order.
 
 #### Scenario: Invalid slug is rejected
 - **WHEN** the writer creates an article with slug "Getting Started!"
@@ -48,7 +48,7 @@ The API SHALL reject invalid input with 422. A slug SHALL be 1 to 100 characters
 - **THEN** the API returns 422
 
 #### Scenario: Tags are normalized
-- **WHEN** the writer submits tags [" guide ", "guide", "api"]
+- **WHEN** the writer submits tags [" Guide ", "guide", "API"]
 - **THEN** the stored tags are ["guide", "api"]
 
 #### Scenario: Blank tag is rejected
