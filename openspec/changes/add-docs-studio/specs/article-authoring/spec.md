@@ -68,11 +68,19 @@ The API SHALL reject invalid input with 422. A slug SHALL be 1 to 100 characters
 - **THEN** the API returns 422 and nothing is changed
 
 ### Requirement: List and read articles for the writer
-The writer API SHALL list all articles regardless of status, and SHALL return a single article with its current draft fields, draft version, status, slug, published snapshot reference, and `published_at`. An unknown article id SHALL return 404.
+The writer API SHALL list all articles regardless of status, ordered by most recently updated first (a design decision: the brief does not specify this order), and SHALL return a single article with its current draft fields, draft version, status, slug, published snapshot reference, and `published_at`. An unknown article id SHALL return 404.
 
 #### Scenario: Writer list includes every status
 - **WHEN** articles exist in `draft`, `published`, and `unpublished` status
 - **THEN** the writer list contains all of them with their statuses
+
+#### Scenario: Most recently updated article is listed first
+- **WHEN** articles A and B exist, B was created after A, and the writer then saves A's draft
+- **THEN** the writer list shows A before B
+
+#### Scenario: Publishing does not reorder the list
+- **WHEN** the writer publishes or unpublishes an article
+- **THEN** its position in the writer list does not change, because its update time does not change
 
 #### Scenario: Unknown article
 - **WHEN** the writer requests an article id that does not exist

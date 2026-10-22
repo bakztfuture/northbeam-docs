@@ -60,7 +60,7 @@ If the database cannot be opened or initialized, every API endpoint, including t
 - **THEN** the next request succeeds
 
 ### Requirement: Unexpected errors are generic
-Any other failure SHALL return 500 with `{"code": 500, "title": "Internal server error"}`. The response SHALL NOT include SQL, stack traces, file paths, or connection details; the full error SHALL be logged on the server. Integrity violations that indicate a bug, such as a broken consistency rule, SHALL return 500.
+Any other failure SHALL return 500 with `{"code": 500, "title": "Internal server error"}`. The response SHALL NOT include SQL, stack traces, file paths, or connection details; the full error SHALL be logged on the server. Integrity violations that indicate a bug, such as a broken consistency rule, SHALL return 500. Foreign-key failures are the exception: they always return 409 as described in "Expected database conflicts return 409", because the database does not report which reference failed.
 
 #### Scenario: Unhandled exception
 - **WHEN** a request fails with an unexpected exception

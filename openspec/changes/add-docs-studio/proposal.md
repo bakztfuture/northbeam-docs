@@ -7,7 +7,7 @@ Northbeam's internal writers need to author documentation articles without accid
 ## What Changes
 
 - New Python backend (FastAPI + Pydantic) backed by a two-table SQLite database (`articles`, `article_versions`) that persists across restarts.
-- Writer API (`/api/admin`, 10 endpoints): create an article, list and read articles, save the draft, publish, unpublish, list/view version history, restore a version into the draft, and delete a version.
+- Writer API (`/api/admin`, 10 endpoints): create an article, list and read articles, save the draft, publish, unpublish, list/view version history, restore a snapshot into the draft, and delete a snapshot.
 - Public API (`/api/public`, 2 endpoints): list published articles and read one by slug, always from its live snapshot; draft-only and unpublished articles return 404.
 - Lifecycle invariants enforced in the database itself, not only in application code:
   - snapshots are immutable (an `UPDATE` trigger rejects any change);
@@ -40,6 +40,6 @@ None. This is the first change in the project.
 ## Impact
 
 - **New code:** `backend/` (FastAPI app, repositories for SQL and connections, a `migrations/` folder with the initial schema, services, routes, tests) and `frontend/` (Vue 3 app: services, composables, views, components, CSS styles).
-- **New dependencies:** backend: FastAPI, Uvicorn, Pydantic, pytest, httpx (test client); the stdlib `sqlite3` module is used directly with no ORM. Frontend: Vue 3, Vue Router, Vite, TypeScript, markdown-it. No CSS preprocessor.
+- **New dependencies:** backend: FastAPI, Uvicorn, Pydantic, pytest, httpx (test client), Ruff (lint and format); the stdlib `sqlite3` module is used directly with no ORM. Frontend: Vue 3, Vue Router, Vite, TypeScript, markdown-it, ESLint with `eslint-plugin-vue`, Prettier. No CSS preprocessor.
 - **Data:** a local SQLite file (ignored by git), created on startup from the initial schema file in `migrations/`. There is no migration handler yet; the folder is in place for future schema changes.
-- **Out of scope:** authentication and roles, WYSIWYG or rich Markdown directives, media uploads, search and pagination, caching, deployment and CI/CD, draft revision history, an audit log of who published, unpublished, restored, or deleted what (and approvals or notifications for those actions), rate limiting, generating slugs from titles, dark mode, mobile layouts, a leave-page warning for unsaved edits, a concurrency counter for publish/unpublish state, idempotent publish, automated frontend and end-to-end tests (for now; testing focuses on thorough backend tests of the lifecycle), and other stretch goals.
+- **Out of scope:** authentication and roles, WYSIWYG or rich Markdown directives, media uploads, search and pagination, caching, deployment and CI/CD, draft revision history, an audit log of who published, unpublished, restored, or deleted what (and approvals or notifications for those actions), rate limiting, generating slugs from titles, dark mode, mobile layouts, frontend accessibility (keyboard, screen-reader, and contrast support), a leave-page warning for unsaved edits, a concurrency counter for publish/unpublish state, idempotent publish, automated frontend and end-to-end tests (for now; testing focuses on thorough backend tests of the lifecycle), and other stretch goals.
