@@ -59,7 +59,7 @@
 
 ## 9. Shared frontend foundations
 
-- [ ] 9.1 Create the CSS foundation in `src/styles/`: `tokens.css` (color tokens, spacer scale, type scale with line heights and weights, radii, content width and gutter, all as custom properties on `:root`, plus a comment listing the breakpoints), `grid.css` (12-column grid with `.container`, `.grid`, `.col-span-N`, and the breakpoint media queries), `typography.css` (base and rendered-Markdown styles from tokens only), and `main.css`, imported once in `main.ts`; add a "Styling" section to the README listing the tokens and the tokens-only rule; verify a component can use `var(--space-4)` and native nesting and `npm run build` succeeds
+- [ ] 9.1 Create the CSS foundation in `src/styles/`: `tokens.css` (color tokens, spacer scale, type scale with line heights and weights, radii, content width and gutter, all as custom properties on `:root`), `grid.css` (12-column grid with `.container`, `.grid`, and `.col-span-N`; no breakpoints, since mobile is out of scope), `typography.css` (base and rendered-Markdown styles from tokens only), and `main.css`, imported once in `main.ts`; add a "Styling" section to the README listing the tokens and the tokens-only rule; verify a component can use `var(--space-4)` and native nesting and `npm run build` succeeds
 - [ ] 9.2 Implement `src/services/` (`http.ts` fetch wrapper throwing `ApiError` with `code`, `title`, and `message`; `adminArticles.ts`; `publicArticles.ts`; `types.ts` mirroring the API models); verify in the browser against the dev backend that a duplicate-slug create surfaces as an `ApiError` with code 409
 - [ ] 9.3 Implement `src/lib/markdown.ts` (one markdown-it instance, `html: false`, safe link validation) and the `MarkdownView` component that renders through it; verify in the browser that each supported element renders, raw `<script>` and `<img onerror>` are not rendered, and a `javascript:` link is neutralized
 - [ ] 9.4 Build the reusable `ConfirmModal` component (props `open`, `title`, `message`, `confirmLabel`, `cancelLabel`, `tone`; emits `confirm` and `cancel`; Escape and backdrop click emit `cancel`); verify in the browser that it shows the props it is given, updates when they change, and emits the right event for each way of closing it
@@ -83,7 +83,7 @@
 
 ## 12. Final integration
 
-- [ ] 12.1 Complete the README with how to use the studio, the invariants and edge cases tables (design Decision 9), the tradeoffs paragraph (unpublish pointer, no publish-state counter, SQLite single writer, no draft history, no overall request timeout, no migration handler yet, app starts when the database is unavailable), and what is missing or next; verify every section the brief requires is present
+- [ ] 12.1 Complete the README with how to use the studio, the invariants and edge cases tables (design Decision 9), the tradeoffs from the design's Risks / Trade-offs section (all of them, including at least one paragraph on a tradeoff made under time pressure and what would change with more time), and what is missing or next; verify every section the brief requires is present
 - [ ] 12.2 From a fresh clone, run `make setup`, `make test`, and `make dev`, and walk through create, edit, publish (confirm and cancel), edit again, view public, restore, unpublish, delete, plus every (FE) scenario in the specs; verify every step behaves as the specs describe
 
 ## Workflow follow-up
