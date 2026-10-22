@@ -23,7 +23,8 @@ Fixed constraints:
 
 - Migration handling. `app/migrations/` exists and holds the initial schema file, which is applied on startup, but there is no migration runner yet (Decision 3).
 - An ORM or query builder. The SQL is small and the constraints are the point, so it is written directly.
-- Frontend state-management libraries, component libraries, or styling frameworks.
+- Frontend state-management libraries, component libraries, or styling frameworks. Styling is plain CSS (native custom properties and native nesting) with our own tokens; no preprocessor.
+- Automated frontend tests, for now. The project's focus is the content lifecycle, so testing effort goes into thorough backend tests of every invariant and edge case instead. Scenarios marked (FE) in the specs are checked by hand in the browser.
 - Running behind multiple worker processes. SQLite serializes writes; the design is correct with several workers but is only tested with one.
 
 ## Decisions
@@ -49,12 +50,18 @@ backend/
   pyproject.toml
 frontend/
   src/
-    api/                 typed client + TS types
+    services/            API calls only: http.ts (fetch + ApiError),
+                         adminArticles.ts, publicArticles.ts, types.ts
+    composables/         business logic and state: useArticleList,
+                         useArticleEditor, usePublicArticles
+    views/               pages: connect a composable to components
+    components/          presentational: props in, events out
+                         (ArticleForm, MarkdownView, VersionHistoryPanel,
+                         ConfirmModal, StatusBadge, ErrorBanner)
+    styles/              tokens.css, grid.css, typography.css, main.css
     lib/markdown.ts      the one shared renderer
-    views/               studio and public pages
-    components/
   package.json
-Makefile                 setup, dev, test, test-fe
+Makefile                 setup, dev, test
 ```
 
 Each layer has one job, and calls only the layer below it:
@@ -79,7 +86,7 @@ repositories/  SQL only.
 
 Keeping transactions in services, not repositories, means one service call can combine several repository functions inside one `write_txn`. Publish is the main case: it needs an INSERT and an UPDATE that must succeed or fail together.
 
-`make setup` creates `backend/.venv` with `python3 -m venv` and installs the backend, then runs `npm install` in `frontend/`. `make test` runs the backend test suite (`pytest`), which is the single command for the lifecycle tests. `make test-fe` runs the (FE) Vitest tests separately. `make dev` starts Uvicorn on port 8000 and Vite on port 5173 with a dev proxy from `/api` to the backend.
+`make setup` creates `backend/.venv` with `python3 -m venv` and installs the backend, then runs `npm install` in `frontend/`. `make test` runs the backend test suite (`pytest`), which is the single command for the lifecycle tests. `make dev` starts Uvicorn on port 8000 and Vite on port 5173 with a dev proxy from `/api` to the backend.
 
 *Alternatives:*
 - `uv` is faster and nicer but adds a prerequisite a reviewer may not have; plain `venv` + `pip` needs only Python 3.12+.
@@ -353,7 +360,7 @@ pytest; each test gets its own SQLite file in `tmp_path`. A fixture builds the a
 - **Concurrent publishes:** two threads, each with its own connection, call the publish service at the same moment, synchronised with a `threading.Barrier`. Both must succeed with consecutive numbers. A second run does the same with one publish and one unpublish, and checks the final row satisfies the status/pointer/`published_at` rules.
 - **Restart durability:** create and publish through one app instance, dispose of it, build a new instance on the same file, and read everything back.
 - **Constraint tests:** use plain connections to try the forbidden writes directly (a published or unpublished article without a pointer; a pointer to another article's snapshot; deleting the pointed-to snapshot). Each must be rejected.
-- **(FE) tests:** Vitest unit tests for `lib/markdown.ts` (supported elements, raw HTML disabled, `javascript:` links blocked) and for the editor's dirty-state logic that disables Publish. They are run by `make test-fe`, kept separate from the backend command.
+- **Frontend:** no automated tests for now. The lifecycle rules are what this project is judged on, and they are all enforced and tested in the backend, so that is where the testing effort goes. Scenarios marked (FE) in the specs are checked by hand in the browser, as each frontend task's verification step and again in the final walkthrough (task 12.2).
 
 *Alternatives for the rollback test:*
 - A temporary trigger that aborts the UPDATE: works, but adds test-only database setup.
@@ -374,17 +381,79 @@ The dependency override was chosen because production code stays unchanged and t
   | `/studio/new` | create form |
   | `/studio/articles/:id` | editor + history panel |
 
-- **API client.** `src/api/` exports typed functions over `fetch`, with TS interfaces mirroring the API models. A non-2xx response throws an `ApiError` carrying `code`, `title` and `message`, so views can branch on 409 or 404.
-- **State.** Each view owns its state with `ref`/`reactive`; there is no Pinia. The editor keeps two copies:
+- **Layers.** Data flows one way, and each layer has one job:
+
+  ```
+  services/      API calls only. Typed functions over fetch; a non-2xx
+     |           response throws ApiError {code, title, message}.
+     v           No state, no Vue.
+  composables/   Business logic and state. Hold refs, computed values,
+     |           and actions (save, publish, restore, ...). Decide what
+     v           a 409 or 503 means for the UI. The only callers of services.
+  views/         Pages. Call one composable and pass its state and actions
+     |           to components. No API calls, no business rules.
+     v
+  components/    Presentational. Props in, events out. No API calls,
+                 no business rules, no composables that fetch data.
+  ```
+
+  The rule of thumb: if logic would need a test, it belongs in a composable. Views and components only render and forward events.
+- **Composables.**
+
+  | Composable | Owns |
+  |---|---|
+  | `useArticleList` | The writer's article list and its loading and error state |
+  | `useArticleEditor(id?)` | Everything on the editor page: `saved`, `form`, `isDirty`, versions, the conflict state, the busy flag (below), the pending confirmation (below), and every action: save (create or update), publish, unpublish, restore, delete, reload latest |
+  | `usePublicArticles` | The public list and the public article by slug |
+
+  Restore and delete live in `useArticleEditor`, not in a separate history composable, so they share the editor's busy flag and refresh the same state.
+- **Editor state.** There is no Pinia: all editor state belongs to one page and one composable instance. The editor keeps two copies of the draft:
   - `saved`: the last draft returned by the API, plus its `draftVersion`;
   - `form`: what is in the inputs.
 
   `isDirty` is a computed comparison of `form` against `saved` on title, body, and tags. So typing a change and then reverting it clears the dirty state. After a successful save, both `form` and `saved` are replaced with the article the API returns, so normalized tags (for example "API" stored as "api") do not leave the editor looking dirty.
+- **One action at a time (busy flag).** While any write is in flight, the editor must not start another one, for example a restore while a save is running.
+  - **What it is.** A page-level flag: `useArticleEditor` holds `pendingAction: 'save' | 'publish' | 'unpublish' | 'restore' | 'delete' | 'reload' | null` and a computed `isBusy`. There is one composable instance per editor page, so the flag belongs to that page; there is no global store.
+  - **When it is set.** An action sets `pendingAction` just before its request is sent and clears it in a `finally` block, so a failed request never leaves the page stuck. For actions that need confirmation (publish, restore over unsaved edits, delete, reload latest), the flag is set only **after** the writer confirms. Opening the modal does not lock anything, and cancelling it changes nothing.
+  - **What the UI does.** While `isBusy`, every action control is disabled: Save, Publish, Unpublish, Reload latest, and Restore and Delete in the history panel. The active one shows a progress label such as "Publishing…".
+  - **Protection relies on the disabled state.** There is no separate guard function: setting the flag disables the buttons on Vue's next render, which happens before the browser handles another click. The backend's draft-version check (409) remains the safety net if anything slips through.
+  - **Why a flag and not a debounce.** A debounce delays or merges calls based on time, which suits typing, such as search boxes. Here the requirement is "nothing else until this request finishes", however long it takes. A flag expresses exactly that, with no timing values to tune.
+- **Confirmation modal.** `ConfirmModal` is one reusable, presentational component, driven entirely by props and events:
+
+  | Prop | Purpose |
+  |---|---|
+  | `open` | Whether the modal is shown |
+  | `title`, `message` | The question and its explanation |
+  | `confirmLabel`, `cancelLabel` | Button text (defaults "Confirm" and "Cancel") |
+  | `tone` | `default` or `danger` (danger for delete) |
+
+  It emits `confirm` and `cancel`. Escape and a backdrop click emit `cancel`. Because everything comes from props, the same component serves every confirmation and updates whenever its props change.
+
+  `useArticleEditor` owns which confirmation is pending: `requestPublish()`, `requestDelete(versionId)`, and the others fill a `confirmation` object (`open`, `title`, `message`, `confirmLabel`, `tone`). `confirmPending()` closes it and runs the matching action, which is when the busy flag is set; `cancelPending()` just closes it. The editor view renders one `<ConfirmModal v-bind="confirmation" @confirm="confirmPending" @cancel="cancelPending" />`.
+
+  Publish always asks first: "Publish this draft? Readers will see it immediately." Restore over unsaved edits, delete a snapshot, and reload latest after a conflict use the same component with their own text, so there is one confirmation pattern, not several.
 - **Save routing.** The editor has one Save action backed by two endpoints. With no article id yet (`/studio/new`), Save calls `POST /api/admin/articles`; on 201 the app takes the returned id and draft version and navigates to `/studio/articles/:id`. From then on, Save calls `PATCH /api/admin/articles/{id}/draft` with the loaded `expectedDraftVersion`. The endpoints stay separate because only create accepts a slug and checks it is unique, and only save checks the draft version.
 - **Unsaved-change protection.** Publish is disabled when `isDirty` is true, with the hint "Save your changes before publishing". There is deliberately no leave-page warning; it is out of scope.
 - **Conflicts.** A 409 from save, restore, or publish shows a banner, keeps `form` as it is, and offers "Reload latest". That action fetches the article and replaces both `form` and `saved`, after the writer confirms.
 - **Errors.** A 503 shows the API's `title` and `message` as a page-level error and does not retry.
-- **Markdown.** `lib/markdown.ts` exports one `markdown-it` instance with `html: false` and the default `validateLink`, which rejects `javascript:`, `vbscript:`, `file:`, and non-image `data:` URLs. It is used by the preview, snapshot view, and public article page. The output is inserted with `v-html` only from this renderer.
+- **Markdown.** `lib/markdown.ts` exports one `markdown-it` instance with `html: false` and the default `validateLink`, which rejects `javascript:`, `vbscript:`, `file:`, and non-image `data:` URLs. It is used by the preview, snapshot view, and public article page through one `MarkdownView` component. The output is inserted with `v-html` only from this renderer.
+- **Styling: native CSS and design tokens.** Styles are plain CSS with no preprocessor. Tokens are CSS custom properties, and component styles use native CSS nesting (`&`). The files in `styles/`:
+
+  | File | Contents |
+  |---|---|
+  | `tokens.css` | Everything on `:root`: color tokens (`--color-text`, `--color-text-muted`, `--color-bg`, `--color-surface`, `--color-border`, `--color-primary`, `--color-danger`, `--color-warning`, `--color-success`, and one per article status); the spacer scale (`--space-0` to `--space-8`, on a 4px base); the type scale (`--font-size-xs` to `--font-size-3xl`, with `--line-height-*` and `--font-weight-*`); radii (`--radius-sm`, `--radius-md`); and the content width and gutter |
+  | `grid.css` | A 12-column CSS grid: a `.container` with the page gutter, `.grid`, and `.col-span-1` to `.col-span-12`, with column spans adjusting at the breakpoints |
+  | `typography.css` | Base element styles (body, headings, code, links) and the rendered-Markdown styles, built only from tokens |
+  | `main.css` | Imports the above; imported once in `main.ts` |
+
+  Custom properties cannot be used inside `@media` conditions, so the two breakpoint widths (`48rem` and `64rem`) are written as literal values in `grid.css`, the only place they appear, and are listed as tokens in a comment at the top of `tokens.css`.
+
+  **The tokens-only rule.** Component and view styles use only `var(--…)` tokens. They contain:
+  - no raw colors (hex, `rgb()`, named colors);
+  - no raw sizes for spacing or type (`px` or `rem` literals);
+  - no new custom properties (`--…` definitions).
+
+  A new value is added to `tokens.css` first, then used. The rule is checked by a search of `src/components` and `src/views` for hex colors, `px`/`rem` literals, and `--` definitions (task 10.9). It is not enforced by a linter, to keep tooling minimal.
 
 ### 9. Invariants and edge cases
 
@@ -436,7 +505,7 @@ Each invariant and edge case below is also a requirement or scenario in the spec
 | EC-23 | Known application error | Flat `{code, title, message?}` body | 3.1 |
 | EC-24 | Unexpected exception | Generic 500; details logged, not returned | 3.2 |
 | EC-25 | (FE) Preview unsaved Markdown | Renders in the browser; no request sent | 10.3 |
-| EC-26 | (FE) View a historical snapshot | Shows that snapshot's content, not the draft | 10.7 |
+| EC-26 | (FE) View a historical snapshot | Shows that snapshot's content, not the draft | 10.8 |
 | EC-27 | A write fails partway for any reason | Rolled back before the error response; lock released | 2.3 |
 | EC-28 | Point an article at another article's snapshot (direct SQL) | Rejected by the database | 2.5 |
 | EC-29 | Application restarts | Every article, draft, snapshot, and state unchanged | 8.2 |
@@ -450,6 +519,8 @@ Each invariant and edge case below is also a requirement or scenario in the spec
 | EC-37 | Public read of an unknown slug | 404, identical to EC-14 and EC-15 | 7.2 |
 | EC-38 | Tags with mixed case, spaces, or duplicates | Stored trimmed, lowercased, de-duplicated | 3.3 |
 | EC-39 | (FE) Editor has unsaved changes | Publish disabled with "Save your changes before publishing" | 10.4 |
+| EC-40 | (FE) Writer clicks Restore (or anything else) while a save or publish is in flight | Not available; only the in-flight request is sent | 10.6 |
+| EC-41 | (FE) Writer cancels the publish confirmation | No request is sent; nothing changes | 10.5 |
 
 ## Risks / Trade-offs
 
@@ -460,7 +531,11 @@ Each invariant and edge case below is also a requirement or scenario in the spec
 - [No migration handler yet; `migrations/` holds only the initial schema] → Fine for a first version with no deployed data. Changing the schema of an existing local database means deleting the file. The next step is a runner that applies numbered files and tracks them in `PRAGMA user_version`.
 - [The app starts even when the database cannot be opened] → Deliberate, so clients get a clear 503 instead of "connection refused", and the app recovers without a restart. The failure is logged at startup and on each failed request, so it is not silent.
 - [Publishing unchanged content creates duplicate snapshots] → Intended for now. Idempotent publish is a known stretch goal and is out of scope.
-- [The rollback test recognises the UPDATE by its SQL text] → If the statement is reworded, the test fails loudly, because the publish then succeeds and its assertions break. So they cannot pass silently.
+- [The rollback test recognises the UPDATE by its SQL text] → If the statement is reworded, the test fails loudly, because the publish then succeeds and its assertions break. So it cannot pass silently.
+- [No automated frontend or end-to-end tests] → Frontend behavior, including the publish modal, the busy flag, and Markdown safety, is checked by hand. Nothing tests the full path from browser to database automatically, so a UI regression, or a mismatch between the frontend and the API, would only be caught by the manual walkthrough (task 12.2). This is accepted because the lifecycle invariants are enforced and tested in the backend, so a UI bug cannot corrupt data. Next steps, in order: Vitest tests for the composables (where the logic lives, so no page rendering is needed), then a few Playwright end-to-end tests for create, publish, restore, and unpublish.
+- [The tokens-only rule is checked by a search, not a linter] → Cheap and enough for one developer. A Stylelint config with `color-no-hex` and unit restrictions would enforce it automatically.
+- [Native CSS nesting needs a current browser (Chrome 120+, Safari 17.2+, Firefox 117+)] → Fine for an internal tool and a reviewer's machine. Older browsers would need a build-time step such as Lightning CSS, which Vite supports.
+- [The busy flag relies on buttons disabling before a second click, with no separate guard] → Vue re-renders before the browser handles the next click, so this holds in practice. If it ever did not, the backend's draft-version 409 stops a duplicate save or publish from overwriting anything.
 - [Only a single Uvicorn worker is tested] → Correctness comes from SQLite locking, not process memory, so more workers stay correct. This is documented but not tested.
 - [Only the latest saved draft is stored; draft saves have no history] → Saving increments `draft_version` for concurrency but keeps no earlier draft. Published snapshots are the version history. An overwritten unpublished draft cannot be recovered, which is acceptable because the brief's safety net is about publishes. A "save as version" feature would be the extension.
 - [No overall request timeout] → The only time limit is SQLite's busy timeout. It bounds how long a write waits for the lock (5 s by default), not how long a request takes. There is no HTTP deadline, no write queue, and no automatic retry. A request that cannot get the lock returns 503 without a `Retry-After` header, and the UI shows the error without retrying; the writer can simply try the action again. Writes are a few short statements, so a server-side deadline would add complexity without a real case to handle.

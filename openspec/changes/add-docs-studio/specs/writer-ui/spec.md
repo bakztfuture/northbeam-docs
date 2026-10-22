@@ -58,12 +58,38 @@ The editor SHALL show editable title, Markdown body, and tags; the slug read-onl
 The editor SHALL offer Publish for any article and Unpublish only for a `published` article, sending the loaded draft version with Publish. After either action, the status, live snapshot, `published_at`, and history SHALL refresh.
 
 #### Scenario: Publish from the editor
-- **WHEN** the writer publishes a saved draft
+- **WHEN** the writer publishes a saved draft and confirms
 - **THEN** the status shows `published` and the new snapshot appears at the top of the history
 
 #### Scenario: Unpublish is only offered when published
 - **WHEN** the article is `draft` or `unpublished`
 - **THEN** no Unpublish action is available
+
+### Requirement: Publish asks for confirmation
+Choosing Publish SHALL open a confirmation dialog explaining that readers will see the saved draft immediately. The publish request SHALL be sent only if the writer confirms; cancelling or dismissing the dialog SHALL send nothing and change nothing.
+
+#### Scenario: Confirm publishes (FE)
+- **WHEN** the writer chooses Publish and confirms in the dialog
+- **THEN** exactly one publish request is sent and the new snapshot appears in the history
+
+#### Scenario: Cancel does nothing (FE)
+- **WHEN** the writer chooses Publish and then cancels, presses Escape, or clicks outside the dialog
+- **THEN** no request is sent and the article is unchanged
+
+### Requirement: One action at a time
+While a save, publish, unpublish, restore, delete, or reload request is in progress, the editor SHALL NOT start any other of these actions. For actions that ask for confirmation, this begins only once the writer confirms. Their controls SHALL be disabled, the in-progress action SHALL show that it is working, and every control SHALL become available again when it finishes, whether it succeeded or failed.
+
+#### Scenario: Restore during a save (FE)
+- **WHEN** a save is in progress and the writer tries to restore a snapshot
+- **THEN** Restore is unavailable and no restore request is sent
+
+#### Scenario: Waiting for confirmation does not lock (FE)
+- **WHEN** the publish confirmation is open and the writer cancels it
+- **THEN** no control was ever disabled by it and every control is available
+
+#### Scenario: Controls return after a failure (FE)
+- **WHEN** an in-progress save fails with an error
+- **THEN** the error is shown and every control is available again
 
 ### Requirement: Draft conflicts keep the writer's work
 When a save, restore, or publish returns 409 because the draft changed elsewhere, the UI SHALL explain the conflict and SHALL keep the writer's unsaved content in the editor. It SHALL offer to reload the latest draft, which replaces the editor content only after the writer confirms.

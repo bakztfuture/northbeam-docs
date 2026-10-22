@@ -3,8 +3,8 @@
 ## 1. Project scaffolding
 
 - [ ] 1.1 Create `backend/` with `pyproject.toml` (FastAPI, Uvicorn, Pydantic; dev: pytest, httpx), `app/main.py` with `create_app(settings)` and a `lifespan` handler, the empty `app/repositories/`, `app/migrations/`, `app/services/`, and `app/routes/` packages, and `app/config.py` with `Settings` (`DOCS_DB_PATH`, `DOCS_DB_BUSY_TIMEOUT_MS` defaulting to 5000); verify the app starts and imports cleanly in a smoke test
-- [ ] 1.2 Create `frontend/` with Vite + Vue 3 + TypeScript, Vue Router, markdown-it, and Vitest, plus a dev proxy from `/api` to `localhost:8000`; verify `npm run build` and `npm run test` succeed
-- [ ] 1.3 Add a root `Makefile` with `setup`, `dev`, `test`, and `test-fe` targets; verify each runs from a clean checkout
+- [ ] 1.2 Create `frontend/` with Vite + Vue 3 + TypeScript, Vue Router, and markdown-it (no CSS preprocessor), the empty `src/services/`, `src/composables/`, `src/views/`, `src/components/`, and `src/styles/` folders, and a dev proxy from `/api` to `localhost:8000`; verify `npm run build` succeeds
+- [ ] 1.3 Add a root `Makefile` with `setup`, `dev`, and `test` targets; verify each runs from a clean checkout
 - [ ] 1.4 Start `README.md` with prerequisites (Python 3.12+, Node 20.19+), setup, run, and test commands; verify the documented commands match the Makefile
 
 ## 2. Database: schema, connections, and transactions
@@ -59,28 +59,32 @@
 
 ## 9. Shared frontend foundations
 
-- [ ] 9.1 Implement the typed API client and TS types in `src/api/`, throwing `ApiError` with `code`, `title`, and `message`; verify with a Vitest test that a 409 response becomes an `ApiError` with code 409
-- [ ] 9.2 Implement `src/lib/markdown.ts` (one markdown-it instance, `html: false`, safe link validation); verify with (FE) Vitest tests for each supported element, raw HTML not rendered, and `javascript:` links neutralized
-- [ ] 9.3 Set up routes (`/`, `/articles/:slug`, `/studio`, `/studio/new`, `/studio/articles/:id`) and a shared layout with links between the studio and the public site, plus a page-level error display for 503 responses that does not retry; verify each route loads in the browser
+- [ ] 9.1 Create the CSS foundation in `src/styles/`: `tokens.css` (color tokens, spacer scale, type scale with line heights and weights, radii, content width and gutter, all as custom properties on `:root`, plus a comment listing the breakpoints), `grid.css` (12-column grid with `.container`, `.grid`, `.col-span-N`, and the breakpoint media queries), `typography.css` (base and rendered-Markdown styles from tokens only), and `main.css`, imported once in `main.ts`; add a "Styling" section to the README listing the tokens and the tokens-only rule; verify a component can use `var(--space-4)` and native nesting and `npm run build` succeeds
+- [ ] 9.2 Implement `src/services/` (`http.ts` fetch wrapper throwing `ApiError` with `code`, `title`, and `message`; `adminArticles.ts`; `publicArticles.ts`; `types.ts` mirroring the API models); verify in the browser against the dev backend that a duplicate-slug create surfaces as an `ApiError` with code 409
+- [ ] 9.3 Implement `src/lib/markdown.ts` (one markdown-it instance, `html: false`, safe link validation) and the `MarkdownView` component that renders through it; verify in the browser that each supported element renders, raw `<script>` and `<img onerror>` are not rendered, and a `javascript:` link is neutralized
+- [ ] 9.4 Build the reusable `ConfirmModal` component (props `open`, `title`, `message`, `confirmLabel`, `cancelLabel`, `tone`; emits `confirm` and `cancel`; Escape and backdrop click emit `cancel`); verify in the browser that it shows the props it is given, updates when they change, and emits the right event for each way of closing it
+- [ ] 9.5 Set up routes (`/`, `/articles/:slug`, `/studio`, `/studio/new`, `/studio/articles/:id`), a shared layout on the grid with links between the studio and the public site, and a page-level error display for 503 responses that does not retry; verify each route loads in the browser
 
 ## 10. Writer UI
 
-- [ ] 10.1 Build the studio article list (title, slug, status, "New article" button); verify in the browser that all statuses are shown
-- [ ] 10.2 Build the create form held locally, whose first save calls `POST` and then switches to the editor; verify in the browser that an abandoned form stores nothing and that a duplicate slug shows an error and keeps the typed content
-- [ ] 10.3 Build the editor (title, body, tags, read-only slug, status, draft version, `publishedAt`, Save, live preview); verify in the browser that saving increments the version and that the preview sends no requests
-- [ ] 10.4 **Highlighted:** implement `isDirty` (comparing the form to the last saved draft) and disable Publish while dirty, with the hint "Save your changes before publishing"; verify with an (FE) Vitest test that editing disables Publish, and that saving or reverting the edit enables it again
-- [ ] 10.5 Add Publish and Unpublish controls (Unpublish only when `published`), refreshing the article and history afterwards; verify in the browser that the status and history update
-- [ ] 10.6 Add the 409 conflict banner for save, restore, and publish, which keeps the form content and offers "Reload latest" behind a confirmation; verify in the browser with two tabs on the same article
-- [ ] 10.7 Build the version history panel (newest first, current marked, view rendered, restore with confirmation when dirty, delete with confirmation, Delete unavailable with an explanation on the pointed-to snapshot); verify in the browser against EC-07, EC-08, EC-10, and EC-11
+- [ ] 10.1 Implement `useArticleList` and the studio list view (title, slug, status, "New article" button); verify in the browser that all statuses are shown
+- [ ] 10.2 Implement `useArticleEditor`: `saved`, `form`, `isDirty`, versions, conflict and error state, the page-level busy flag (`pendingAction`, `isBusy`), the pending `confirmation` with `confirmPending` and `cancelPending`, and the actions save (POST on first save, then PATCH), publish, unpublish, restore, delete, and reload latest, all calling `src/services/` only; verify by search that no view or component imports from `src/services/`, and in the browser that a first save creates the article and switches to the editor, an abandoned new form stores nothing, and a duplicate slug shows an error and keeps the typed content
+- [ ] 10.3 Build the editor view and `ArticleForm` component (title, body, tags, read-only slug, status, draft version, `publishedAt`, Save, live preview through `MarkdownView`); verify in the browser that saving increments the version and that the preview sends no requests (EC-25)
+- [ ] 10.4 **Highlighted:** disable Publish while `isDirty`, with the hint "Save your changes before publishing"; verify in the browser that editing disables Publish, and that saving or reverting the edit enables it again (EC-39)
+- [ ] 10.5 **Highlighted:** Publish calls `requestPublish()`, which opens `ConfirmModal` through the editor's `confirmation` props, and only Confirm sends the publish request; add Unpublish (only when `published`); refresh the article and history after either; verify in the browser that cancel, Escape, and backdrop click send no request (EC-41) and that confirming publishes and updates the status and history
+- [ ] 10.6 **Highlighted:** wire the busy flag: set `pendingAction` when a request starts (after confirmation where there is one) and clear it in `finally`; while `isBusy`, disable Save, Publish, Unpublish, Reload latest, Restore, and Delete, and show a progress label on the active action; verify in the browser with network throttling that Restore is unavailable during a save (EC-40), an open-then-cancelled modal disables nothing, and every control returns after a failed request
+- [ ] 10.7 Add the 409 conflict banner for save, restore, and publish, which keeps the form content and offers "Reload latest" behind the confirmation modal; verify in the browser with two tabs on the same article
+- [ ] 10.8 Build the `VersionHistoryPanel` component (newest first, current marked, view rendered, restore with confirmation when dirty, delete with confirmation, Delete unavailable with an explanation on the pointed-to snapshot), driven by `useArticleEditor`; verify in the browser against EC-07, EC-08, EC-10, EC-11, and EC-26
+- [ ] 10.9 Check the tokens-only rule: search `src/components/` and `src/views/` for hex colors, `rgb(`, `px` and `rem` literals, and `--` custom property definitions; verify none are found, and move any value that is needed into `tokens.css`
 
 ## 11. Public reader UI
 
-- [ ] 11.1 Build the public list page (title, tags, publication date) and the article page (rendered snapshot body), with a "not found" page on 404; verify in the browser that an unpublished article's URL shows "not found"
+- [ ] 11.1 Implement `usePublicArticles` and build the public list page (title, tags, publication date) and the article page (rendered snapshot body through `MarkdownView`), with a "not found" page on 404; verify in the browser that an unpublished article's URL shows "not found"
 
 ## 12. Final integration
 
 - [ ] 12.1 Complete the README with how to use the studio, the invariants and edge cases tables (design Decision 9), the tradeoffs paragraph (unpublish pointer, no publish-state counter, SQLite single writer, no draft history, no overall request timeout, no migration handler yet, app starts when the database is unavailable), and what is missing or next; verify every section the brief requires is present
-- [ ] 12.2 From a fresh clone, run `make setup`, `make test`, `make test-fe`, and `make dev`, and walk through create, edit, publish, edit again, view public, restore, unpublish, delete; verify every step behaves as the specs describe
+- [ ] 12.2 From a fresh clone, run `make setup`, `make test`, and `make dev`, and walk through create, edit, publish (confirm and cancel), edit again, view public, restore, unpublish, delete, plus every (FE) scenario in the specs; verify every step behaves as the specs describe
 
 ## Workflow follow-up
 
