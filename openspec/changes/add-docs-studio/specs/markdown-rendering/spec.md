@@ -25,7 +25,7 @@ The frontend SHALL render Markdown with a single shared renderer for the draft p
 - **THEN** the rendered content is the snapshot's body, not the draft
 
 ### Requirement: Rendering is safe
-The renderer SHALL NOT render raw HTML embedded in Markdown and SHALL NOT produce links with unsafe protocols such as `javascript:` or `data:`.
+The renderer SHALL NOT render raw HTML embedded in Markdown and SHALL NOT produce links with unsafe protocols: `javascript:`, `vbscript:`, `file:`, or `data:` URLs other than images.
 
 #### Scenario: Raw HTML is not rendered (FE)
 - **WHEN** a body contains `<script>alert(1)</script>` or `<img onerror=...>`

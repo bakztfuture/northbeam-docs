@@ -248,6 +248,7 @@ The JSON uses camelCase (Pydantic `alias_generator=to_camel`, `populate_by_name=
 
 - **The admin article object** contains: `id, slug, status, draft {title, body, tags}, draftVersion, currentPublishedVersionId, publishedAt, createdAt, updatedAt`.
 - **The public endpoints** join `articles` to `article_versions` on the pointer, filter on `status = 'published'`, and select only snapshot columns plus `slug` and `published_at`. The draft columns are never selected, so they cannot leak.
+- **Health check.** `GET /api/health` returns 200 for smoke tests and `make dev` checks. It is not one of the 12 endpoints above and touches no data.
 - **Draft saves reject unknown fields** (`extra="forbid"`), so a stray `slug` returns 422 rather than being silently ignored.
 
 ### 6. Validation and errors

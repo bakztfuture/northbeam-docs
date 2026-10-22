@@ -30,10 +30,10 @@ An article's slug SHALL be set only when the article is created and SHALL NOT be
 
 #### Scenario: Draft save cannot change the slug
 - **WHEN** the writer saves a draft and the request includes a slug field
-- **THEN** the slug is not changed
+- **THEN** the API returns 422 and the slug is not changed
 
 ### Requirement: Validate article input
-The API SHALL reject invalid input with 422. A slug SHALL be 1 to 100 characters of lowercase letters, digits, and single hyphens between them. Title and body SHALL contain at least one non-whitespace character; the title SHALL be at most 200 characters. Tags SHALL be a list of non-blank strings, stored trimmed, lowercased, and without duplicates, in first-seen order.
+The API SHALL reject invalid input with 422. A slug SHALL be 1 to 100 characters of lowercase letters, digits, and single hyphens between them. Title and body SHALL contain at least one non-whitespace character; the title SHALL be at most 200 characters. Tags SHALL be a list of at most 20 non-blank strings, stored trimmed, lowercased, and without duplicates, in first-seen order.
 
 #### Scenario: Invalid slug is rejected
 - **WHEN** the writer creates an article with slug "Getting Started!"
@@ -54,6 +54,10 @@ The API SHALL reject invalid input with 422. A slug SHALL be 1 to 100 characters
 #### Scenario: Blank tag is rejected
 - **WHEN** the writer submits tags ["guide", "  "]
 - **THEN** the API returns 422
+
+#### Scenario: Too many tags are rejected
+- **WHEN** the writer submits 21 tags
+- **THEN** the API returns 422 and nothing is changed
 
 ### Requirement: List and read articles for the writer
 The writer API SHALL list all articles regardless of status, and SHALL return a single article with its current draft fields, draft version, status, slug, live snapshot reference, and `published_at`. An unknown article id SHALL return 404.

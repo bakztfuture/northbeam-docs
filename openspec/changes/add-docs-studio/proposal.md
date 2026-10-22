@@ -41,5 +41,5 @@ None. This is the first change in the project.
 
 - **New code:** `backend/` (FastAPI app, SQLite schema and connection setup, services, tests) and `frontend/` (Vue 3 app).
 - **New dependencies:** backend: FastAPI, Uvicorn, Pydantic, pytest, httpx (test client); the stdlib `sqlite3` module is used directly with no ORM. Frontend: Vue 3, Vue Router, Vite, TypeScript, markdown-it, Vitest.
-- **Data:** a local SQLite file (ignored by git), created and migrated on startup.
+- **Data:** a local SQLite file (ignored by git), created on startup (no migration tooling).
 - **Out of scope:** authentication and roles, WYSIWYG or rich Markdown directives, media uploads, search and pagination, caching, deployment and CI/CD, draft revision history, a leave-page warning for unsaved edits, a concurrency counter for publish/unpublish state, idempotent publish, and other stretch goals.

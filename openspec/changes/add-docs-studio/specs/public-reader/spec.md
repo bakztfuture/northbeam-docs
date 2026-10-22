@@ -7,7 +7,7 @@ Lets anonymous readers on the public docs site browse and read published article
 ## ADDED Requirements
 
 ### Requirement: List published articles
-The public API SHALL list only articles whose status is `published`, each with its slug, title, tags, and `published_at`. Title and tags SHALL come from the article's live snapshot, not its draft. Draft-only and unpublished articles SHALL NOT appear. No authentication SHALL be required.
+The public API SHALL list only articles whose status is `published`, each with its slug, title, tags, and `published_at`, ordered newest `published_at` first. Title and tags SHALL come from the article's live snapshot, not its draft. Draft-only and unpublished articles SHALL NOT appear. No authentication SHALL be required.
 
 #### Scenario: Only published articles are listed
 - **WHEN** one article is `published`, one is `draft`, and one is `unpublished`
@@ -16,6 +16,10 @@ The public API SHALL list only articles whose status is `published`, each with i
 #### Scenario: List shows snapshot data, not the draft
 - **WHEN** a published article's draft title and tags are changed and saved but not published
 - **THEN** the public list still shows the live snapshot's title and tags
+
+#### Scenario: Newest first
+- **WHEN** article A was first published before article B
+- **THEN** the public list shows B before A
 
 #### Scenario: List shows the first publication time
 - **WHEN** an article was first published, then republished later
