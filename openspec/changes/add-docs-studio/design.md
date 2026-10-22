@@ -318,8 +318,8 @@ Notes:
 
 - slug: `^[a-z0-9]+(-[a-z0-9]+)*$`, 1 to 100 characters;
 - title: stripped, 1 to 200 characters;
-- body: at least one non-whitespace character;
-- tags: each one stripped, lowercased, and non-empty, at most 20, duplicates removed while keeping first-seen order;
+- body: at least one non-whitespace character, at most 50,000 characters;
+- tags: each one stripped, lowercased, non-empty, and at most 100 characters; at most 20 tags; duplicates removed while keeping first-seen order;
 - `expectedDraftVersion`: `int >= 1`.
 
 FastAPI's default 422 handler is left unchanged.
@@ -358,6 +358,25 @@ pytest; each test gets its own SQLite file in `tmp_path`. A fixture builds the a
 - **Database unavailable:** `DOCS_DB_PATH` points at an existing directory, which SQLite cannot open as a file. An admin endpoint, a public endpoint, and the health check must all return 503 "Database unavailable", and the body must not contain the path. Then the directory is removed, and the next request succeeds without restarting the app.
 - **Lock exhaustion (503):** a second plain connection holds `BEGIN IMMEDIATE`, while the app runs with a busy timeout of about 100 ms. A draft save must return 503 "Service temporarily unavailable", and after the lock is released, a save must succeed.
 - **Concurrent publishes:** two threads, each with its own connection, call the publish service at the same moment, synchronised with a `threading.Barrier`. Both must succeed with consecutive numbers. A second run does the same with one publish and one unpublish, and checks the final row satisfies the status/pointer/`published_at` rules.
+- **Golden-path lifecycle test:** one test walks a single article through its whole life through the HTTP API, and checks the public view, the history, the pointer, and `published_at` after every step:
+
+  | Step | Expect |
+  |---|---|
+  | Create the article | Public read is 404; history is empty |
+  | Save the draft twice | Draft version goes 1, 2, 3; public read still 404; no snapshots |
+  | Publish (v1) | Public read returns v1's content; `published_at` set; pointer names v1 |
+  | Save a new draft | Public read still returns v1, not the draft |
+  | Publish (v2) | Public read returns v2; `published_at` unchanged |
+  | Delete v1 | 204; history is v2 only; public still v2 |
+  | Unpublish | Public read and public list are 404 and empty; pointer and `published_at` unchanged; v2 still in history |
+  | Restore v2 into the draft | Draft equals v2; still unpublished; no snapshot created |
+  | Delete v2 | 409, since it is still the pointed-to snapshot |
+  | Publish (v3) | Public read returns v3; `published_at` unchanged; v3 numbered 3, not reusing 1 |
+  | Delete v2 | 204, now that the pointer has moved |
+
+  At every step it also checks `updated_at` and `draft_version`: both change on create, save, and restore, and neither changes on publish, unpublish, or delete.
+
+  The individual tests cover each rule in isolation; this one proves they hold together in the order a writer would actually use them.
 - **Restart durability:** create and publish through one app instance, dispose of it, build a new instance on the same file, and read everything back.
 - **Constraint tests:** use plain connections to try the forbidden writes directly (a published or unpublished article without a pointer; a pointer to another article's snapshot; deleting the pointed-to snapshot). Each must be rejected.
 - **Frontend:** no automated tests for now. The lifecycle rules are what this project is judged on, and they are all enforced and tested in the backend, so that is where the testing effort goes. Scenarios marked (FE) in the specs are checked by hand in the browser, as each frontend task's verification step and again in the final walkthrough (task 12.2).
@@ -457,6 +476,15 @@ The dependency override was chosen because production code stays unchanged and t
 
 Each invariant and edge case below is also a requirement or scenario in the specs; this section collects them in one place and shows where each is enforced and tested. The README reuses both tables.
 
+**Terms used below.** Two separate fields describe an article's publication state, and they change at different times:
+
+- **Status** (`draft`, `published`, `unpublished`) decides what readers can see. Publish sets it to `published`; unpublish sets it to `unpublished`.
+- **The pointer** is the `current_published_version_id` field: the snapshot that was most recently published. Publish moves it to the new snapshot. Unpublish does **not** clear it. The specs call it the **published snapshot reference**.
+
+So after an unpublish the status says readers see nothing, while the pointer still names the last published snapshot. That snapshot therefore stays protected from deletion until a later publish moves the pointer. This is a deliberate design limitation (see Decision 2 and Risks / Trade-offs).
+
+The **live** snapshot is the one the pointer names while the status is `published`. A **historical** snapshot is any snapshot the pointer does not name.
+
 **Invariants (rules that must always hold):**
 
 | # | Invariant | Spec requirement | Enforced by | Tests (tasks) |
@@ -469,7 +497,7 @@ Each invariant and edge case below is also a requirement or scenario in the spec
 | INV-6 | Restore only copies a snapshot into the draft. It never publishes, and never creates, changes, or deletes a snapshot. | version-history: Restore a snapshot into the draft | Restore only updates `articles` | 6.2 |
 | INV-7 | A write based on an out-of-date draft (save, restore, or publish) is rejected with 409, never applied. | article-authoring: Detect stale draft writes; article-publishing: Publishing requires a current draft version; version-history: Restore requires a current draft version | Compare-and-set on `draft_version` | 4.3, 5.2, 6.2 |
 | INV-8 | Unpublish changes only the status. Every snapshot, the pointer, and `published_at` survive it. | article-publishing: Unpublish is a status change only | Status-only UPDATE; CHECK requires the pointer | 5.5 |
-| INV-9 | `published_at` is set on the first publish and never changes afterwards. | article-publishing: Republishing preserves the first publication time | `COALESCE(published_at, now)` | 5.2, 5.5 |
+| INV-9 | `published_at` is set on the first publish and never changes afterwards. | article-publishing: Republishing preserves the first publication time | `COALESCE(published_at, now)` | 5.2, 5.5, 7.3 |
 | INV-10 | Snapshot numbers per article only go up and are never reused, even after deletions. | article-publishing: Snapshot numbers increase and are never reused | Monotonic counter; `UNIQUE(article_id, version_number)` | 5.4, 6.4 |
 | INV-11 | A slug is unique and never changes after the article is created. | article-authoring: Slugs are unique; Slugs are fixed after creation | `UNIQUE(slug)`; draft saves reject `slug` | 4.1, 4.3 |
 | INV-12 | A failed write leaves no partial change behind. | api-errors: Failed writes leave no partial changes | `write_txn` rolls back on any exception | 2.3, 5.3 |
@@ -487,7 +515,7 @@ Each invariant and edge case below is also a requirement or scenario in the spec
 | EC-07 | Delete the live snapshot | 409; snapshot kept | 6.3 |
 | EC-08 | Delete a historical snapshot | 204; only that snapshot removed | 6.3 |
 | EC-09 | Unpublish a published article | Public returns 404; every snapshot kept | 5.5, 7.2 |
-| EC-10 | Unpublish, then delete the snapshot the article still points to | 409; snapshot kept | 6.3 |
+| EC-10 | Status `unpublished`, pointer still on the last published snapshot: delete that snapshot | 409; snapshot kept (design limitation: the pointer is not cleared on unpublish) | 6.3 |
 | EC-11 | Restore an older snapshot | Draft equals that snapshot; history unchanged; public content unchanged | 6.2 |
 | EC-12 | Restore with an out-of-date draft version | 409; draft unchanged | 6.2 |
 | EC-13 | Delete the highest snapshot (not pointed to), then publish | New number is one above the counter; the deleted number is not reused | 6.4 |
@@ -516,9 +544,11 @@ Each invariant and edge case below is also a requirement or scenario in the spec
 | EC-36 | Draft save that includes a slug | 422; slug unchanged | 4.3 |
 | EC-37 | Public read of an unknown slug | 404, identical to EC-14 and EC-15 | 7.2 |
 | EC-38 | Tags with mixed case, spaces, or duplicates | Stored trimmed, lowercased, de-duplicated | 3.3 |
+| EC-43 | Body over 50,000 characters, or a tag over 100 characters | 422; nothing stored | 3.3 |
 | EC-39 | (FE) Editor has unsaved changes | Publish disabled with "Save your changes before publishing" | 10.4 |
 | EC-40 | (FE) Writer clicks Restore (or anything else) while a save or publish is in flight | Not available; only the in-flight request is sent | 10.6 |
 | EC-41 | (FE) Writer cancels the publish confirmation | No request is sent; nothing changes | 10.5 |
+| EC-42 | Status `unpublished`, pointer still on v3: delete a historical snapshot, v1 | 204; only v1 removed; status stays `unpublished` and the pointer stays on v3 | 6.3 |
 
 ## Risks / Trade-offs
 
@@ -530,6 +560,7 @@ Each invariant and edge case below is also a requirement or scenario in the spec
 - [The app starts even when the database cannot be opened] → Deliberate, so clients get a clear 503 instead of "connection refused", and the app recovers without a restart. The failure is logged at startup and on each failed request, so it is not silent.
 - [Publishing unchanged content creates duplicate snapshots] → Intended for now. Idempotent publish is a known stretch goal and is out of scope.
 - [Saving a draft with no changes is accepted] → The API does not compare the submitted draft with the stored one, so an identical save still succeeds, increments `draft_version`, and updates `updated_at`. No data is lost, but another writer holding the old version will get a 409 they didn't strictly need. The editor could disable Save while `isDirty` is false, and the backend could skip the update when nothing changed; neither is in scope.
+- [No slug collision handling, and the slug race is not tested directly] → A slug that is already taken is rejected with 409; there is no automatic suffix or suggestion. If two creates with the same slug arrive at the same moment, both can pass the application check, and the database's `UNIQUE(slug)` constraint rejects the second, which the error mapping turns into a 409 (Decision 6). That mapping is tested (task 3.2) and so is the ordinary duplicate (task 4.1), but no test forces a real two-request race. Acceptable with a single writer; collision handling is a known stretch goal.
 - [The slug is not derived from the title] → The writer types the slug when creating the article; it is not generated from the title and does not follow later title changes. This keeps public URLs stable. Generating it from the title, with automatic suffixes on collisions, would be a later addition.
 - [No audit log] → Nothing records who did what and when beyond the timestamps already stored: `created_at`, `updated_at`, `published_at`, and each snapshot's `created_at`. There is no history of unpublishes, restores, or deletions, and no record of who acted, since there are no users. Acceptable with a single trusted writer and no authentication. The next step is an `article_events` table (article, action, actor, time) written inside the same transaction as each write. With users in place, sensitive actions such as publish or restore could then notify reviewers or require explicit approval.
 - [No rate limiting] → The API accepts any number of requests. Acceptable for an internal tool with no public write access; the public endpoints are read-only and cheap. Adding limits later belongs in middleware or in front of the app, for example a reverse proxy.

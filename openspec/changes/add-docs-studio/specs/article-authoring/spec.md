@@ -7,7 +7,7 @@ Lets an internal writer create documentation articles and edit each article's si
 ## ADDED Requirements
 
 ### Requirement: Create an article
-The writer API SHALL create an article from a title, slug, Markdown body, and tags. A new article SHALL have status `draft`, draft version 1, no live snapshot, no `published_at`, and no snapshots. It SHALL NOT be visible through the public API.
+The writer API SHALL create an article from a title, slug, Markdown body, and tags. A new article SHALL have status `draft`, draft version 1, no published snapshot reference, no `published_at`, and no snapshots. It SHALL NOT be visible through the public API.
 
 #### Scenario: Article is created as a draft
 - **WHEN** the writer creates an article with title "Getting Started", slug "getting-started", body "# Welcome", and tags ["guide"]
@@ -33,7 +33,7 @@ An article's slug SHALL be set only when the article is created and SHALL NOT be
 - **THEN** the API returns 422 and the slug is not changed
 
 ### Requirement: Validate article input
-The API SHALL reject invalid input with 422. A slug SHALL be 1 to 100 characters of lowercase letters, digits, and single hyphens between them. Title and body SHALL contain at least one non-whitespace character; the title SHALL be at most 200 characters. Tags SHALL be a list of at most 20 non-blank strings, stored trimmed, lowercased, and without duplicates, in first-seen order.
+The API SHALL reject invalid input with 422. A slug SHALL be 1 to 100 characters of lowercase letters, digits, and single hyphens between them. Title and body SHALL contain at least one non-whitespace character; the title SHALL be at most 200 characters and the body at most 50,000. Tags SHALL be a list of at most 20 non-blank strings of at most 100 characters each, stored trimmed, lowercased, and without duplicates, in first-seen order.
 
 #### Scenario: Invalid slug is rejected
 - **WHEN** the writer creates an article with slug "Getting Started!"
@@ -55,12 +55,20 @@ The API SHALL reject invalid input with 422. A slug SHALL be 1 to 100 characters
 - **WHEN** the writer submits tags ["guide", "  "]
 - **THEN** the API returns 422
 
+#### Scenario: Body too long is rejected
+- **WHEN** the writer creates an article or saves a draft with a body of 50,001 characters
+- **THEN** the API returns 422 and nothing is changed
+
+#### Scenario: Tag too long is rejected
+- **WHEN** the writer submits a tag of 101 characters
+- **THEN** the API returns 422 and nothing is changed
+
 #### Scenario: Too many tags are rejected
 - **WHEN** the writer submits 21 tags
 - **THEN** the API returns 422 and nothing is changed
 
 ### Requirement: List and read articles for the writer
-The writer API SHALL list all articles regardless of status, and SHALL return a single article with its current draft fields, draft version, status, slug, live snapshot reference, and `published_at`. An unknown article id SHALL return 404.
+The writer API SHALL list all articles regardless of status, and SHALL return a single article with its current draft fields, draft version, status, slug, published snapshot reference, and `published_at`. An unknown article id SHALL return 404.
 
 #### Scenario: Writer list includes every status
 - **WHEN** articles exist in `draft`, `published`, and `unpublished` status
@@ -71,7 +79,7 @@ The writer API SHALL list all articles regardless of status, and SHALL return a 
 - **THEN** the API returns 404
 
 ### Requirement: Save the draft
-The writer API SHALL replace an article's draft title, body, and tags with the submitted values and increment its draft version by one. Saving SHALL NOT create, change, or delete any snapshot, and SHALL NOT change the article's status, live snapshot, or `published_at`.
+The writer API SHALL replace an article's draft title, body, and tags with the submitted values and increment its draft version by one. Saving SHALL NOT create, change, or delete any snapshot, and SHALL NOT change the article's status, published snapshot reference, or `published_at`.
 
 #### Scenario: Draft is saved
 - **WHEN** the writer saves new content with the article's current draft version

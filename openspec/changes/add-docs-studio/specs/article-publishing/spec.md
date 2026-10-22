@@ -25,7 +25,7 @@ Every publish request SHALL include the draft version the writer last loaded. If
 #### Scenario: Publish with a stale draft version
 - **WHEN** another writer has saved the draft since this writer loaded it, and this writer publishes with the older version
 - **THEN** the API returns 409
-- **AND** no snapshot is created and the article's status, live snapshot, and `published_at` are unchanged
+- **AND** no snapshot is created and the article's status, published snapshot reference, and `published_at` are unchanged
 
 #### Scenario: Publish a missing article
 - **WHEN** the writer publishes an article id that does not exist
@@ -55,6 +55,10 @@ Each publish SHALL give its snapshot the next number for that article, one highe
 - **THEN** a new snapshot with the next number is created and becomes live
 - **AND** `published_at` is unchanged and earlier snapshots are unchanged
 
+#### Scenario: published_at survives every later change
+- **WHEN** after the first publish the writer saves the draft, publishes again, unpublishes, restores a snapshot, deletes a historical snapshot, and publishes again
+- **THEN** `published_at` is the same after every one of those steps as it was after the first publish
+
 #### Scenario: Publishing unchanged content creates a new snapshot
 - **WHEN** the writer publishes an article twice without changing the draft in between
 - **THEN** two separate snapshots exist with identical content and consecutive numbers
@@ -65,15 +69,15 @@ Creating the snapshot, advancing the snapshot counter, setting status, moving th
 #### Scenario: Failure after the snapshot is written
 - **WHEN** a publish fails after its snapshot has been written but before the article's publication state is updated
 - **THEN** the request fails and no new snapshot exists
-- **AND** the article's status, live snapshot, `published_at`, snapshot counter, and draft are all unchanged
+- **AND** the article's status, published snapshot reference, `published_at`, snapshot counter, and draft are all unchanged
 - **AND** a later successful publish receives the next expected snapshot number
 
 #### Scenario: Process stops mid-publish
 - **WHEN** the application process stops abruptly after a publish's snapshot has been written but before it commits
-- **THEN** after a restart no new snapshot exists and the article's status, live snapshot, and `published_at` are as they were before the publish
+- **THEN** after a restart no new snapshot exists and the article's status, published snapshot reference, and `published_at` are as they were before the publish
 
 ### Requirement: Unpublish is a status change only
-Unpublishing SHALL change a `published` article's status to `unpublished` and nothing else. The live snapshot reference, `published_at`, the draft, and every snapshot SHALL be kept. Unpublishing an article that is not `published` SHALL return 409.
+Unpublishing SHALL change a `published` article's status to `unpublished` and nothing else. The published snapshot reference, `published_at`, the draft, and every snapshot SHALL be kept. Unpublishing an article that is not `published` SHALL return 409.
 
 #### Scenario: Unpublish a published article
 - **WHEN** the writer unpublishes a published article
@@ -99,16 +103,16 @@ Unpublishing SHALL change a `published` article's status to `unpublished` and no
 - **AND** the article's status is `published` and its `published_at` is unchanged
 
 ### Requirement: Publication state is always consistent
-The stored article SHALL only ever be in one of these states, and the database SHALL reject any write that would produce another: `draft` with no live snapshot and no `published_at`; `published` or `unpublished` with a live snapshot and a `published_at`. The live snapshot SHALL belong to the same article.
+The stored article SHALL only ever be in one of these states, and the database SHALL reject any write that would produce another: `draft` with no published snapshot reference and no `published_at`; `published` or `unpublished` with a published snapshot reference and a `published_at`. That reference SHALL name a snapshot of the same article.
 
 #### Scenario: Inconsistent state is rejected by the database
-- **WHEN** a write outside the API tries to set an article to `published` with no live snapshot
+- **WHEN** a write outside the API tries to set an article to `published` with no published snapshot reference
 - **THEN** the database rejects the write
 
 #### Scenario: Publish and unpublish at the same time
 - **WHEN** a publish and an unpublish for the same published article run at the same time
 - **THEN** they run one after the other and both outcomes are legal states
-- **AND** the final status, live snapshot, and `published_at` are consistent with each other
+- **AND** the final status, published snapshot reference, and `published_at` are consistent with each other
 
 #### Scenario: Pointer to another article's snapshot is rejected
 - **WHEN** a write outside the API tries to point an article at a snapshot that belongs to a different article

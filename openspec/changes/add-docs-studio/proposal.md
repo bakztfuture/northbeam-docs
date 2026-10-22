@@ -11,11 +11,11 @@ Northbeam's internal writers need to author documentation articles without accid
 - Public API (`/api/public`, 2 endpoints): list published articles and read one by slug, always from its live snapshot; draft-only and unpublished articles return 404.
 - Lifecycle invariants enforced in the database itself, not only in application code:
   - snapshots are immutable (an `UPDATE` trigger rejects any change);
-  - status, live-snapshot pointer, and `published_at` can only exist in legal combinations (CHECK constraint);
+  - status, published snapshot reference (the pointer), and `published_at` can only exist in legal combinations (CHECK constraint);
   - the snapshot the article points to cannot be deleted (`ON DELETE RESTRICT` composite foreign key);
   - publish is one `BEGIN IMMEDIATE` transaction, so it fully succeeds or fully rolls back.
 - Optimistic concurrency on the draft: save, restore, and publish carry `expectedDraftVersion`; a stale request returns 409 instead of overwriting newer content.
-- Unpublish is a status change only: the live-snapshot pointer and `published_at` are kept, so the last published snapshot stays protected until a later publish moves the pointer.
+- Unpublish is a status change only: the published snapshot reference (the pointer) and `published_at` are kept, so the last published snapshot stays protected until a later publish moves the pointer.
 - Centralized error handling: one flat `{code, title, message?}` shape for known errors, expected database errors mapped to 409/503, a database that cannot be opened returned as 503 on every endpoint, everything unexpected returned as a generic 500.
 - New Vue 3 + TypeScript + Vite frontend: a writer UI (article list, create form, editor with Markdown preview, publish controls, version history panel) and a public reader UI (list + article page), sharing one safe Markdown renderer. Data flows from services (API calls) to composables (business logic and state) to views and components; styling is plain CSS, using native custom properties and nesting, built only from shared design tokens.
 - The writer UI disables Publish while the editor has unsaved changes, because publish snapshots the **saved** draft, not the editor contents. Publish also asks for confirmation in a modal, and the editor runs one action at a time, so nothing else (such as a restore) can start while a save or publish is in flight.

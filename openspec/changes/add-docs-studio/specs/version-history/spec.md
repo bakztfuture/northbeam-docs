@@ -37,7 +37,7 @@ The writer API SHALL return a single snapshot's title, Markdown body, tags, vers
 - **THEN** the API returns 404
 
 ### Requirement: Restore a snapshot into the draft
-Restoring SHALL copy a snapshot's title, body, and tags into the article's draft and increment the draft version. It SHALL NOT publish, and SHALL NOT change status, the live snapshot, `published_at`, or any snapshot. No snapshot SHALL be created or deleted.
+Restoring SHALL copy a snapshot's title, body, and tags into the article's draft and increment the draft version. It SHALL NOT publish, and SHALL NOT change status, the published snapshot reference, `published_at`, or any snapshot. No snapshot SHALL be created or deleted.
 
 #### Scenario: Restore an older snapshot
 - **WHEN** a published article has snapshots 1 and 2 with 2 live, and the writer restores snapshot 1 with the current draft version
@@ -66,6 +66,11 @@ The writer API SHALL delete a snapshot the article does not currently point to a
 #### Scenario: Delete a historical snapshot
 - **WHEN** a published article has snapshots 1, 2, and 3 with 3 live, and the writer deletes snapshot 1
 - **THEN** the API returns 204 and the article has exactly snapshots 2 and 3
+
+#### Scenario: Delete a historical snapshot of an unpublished article
+- **WHEN** an article has snapshots 1, 2, and 3, its status is `unpublished`, its reference to the last published snapshot still names snapshot 3, and the writer deletes snapshot 1
+- **THEN** the API returns 204 and the article has exactly snapshots 2 and 3
+- **AND** the status is still `unpublished` and the reference still names snapshot 3
 
 #### Scenario: Delete a missing snapshot
 - **WHEN** the writer deletes a snapshot id that does not exist for the article

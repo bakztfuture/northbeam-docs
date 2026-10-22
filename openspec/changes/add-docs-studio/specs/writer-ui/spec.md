@@ -55,7 +55,7 @@ The editor SHALL show editable title, Markdown body, and tags; the slug read-onl
 - **THEN** the Publish button is enabled
 
 ### Requirement: Publish and unpublish controls
-The editor SHALL offer Publish for any article and Unpublish only for a `published` article, sending the loaded draft version with Publish. After either action, the status, live snapshot, `published_at`, and history SHALL refresh.
+The editor SHALL offer Publish for any article and Unpublish only for a `published` article, sending the loaded draft version with Publish. After either action, the status, published snapshot reference, `published_at`, and history SHALL refresh.
 
 #### Scenario: Publish from the editor
 - **WHEN** the writer publishes a saved draft and confirms
