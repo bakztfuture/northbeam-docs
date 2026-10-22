@@ -60,13 +60,17 @@ Each publish SHALL give its snapshot the next number for that article, one highe
 - **THEN** two separate snapshots exist with identical content and consecutive numbers
 
 ### Requirement: Publishing is atomic
-Creating the snapshot, advancing the snapshot counter, setting status, moving the live pointer, and setting `published_at` SHALL succeed or fail together. If a publish fails at any point, the database SHALL be left exactly as it was before the request.
+Creating the snapshot, advancing the snapshot counter, setting status, moving the live pointer, and setting `published_at` SHALL succeed or fail together. If a publish fails at any point, including the process stopping mid-publish, the stored state SHALL be exactly as it was before the request.
 
 #### Scenario: Failure after the snapshot is written
 - **WHEN** a publish fails after its snapshot has been written but before the article's publication state is updated
 - **THEN** the request fails and no new snapshot exists
 - **AND** the article's status, live snapshot, `published_at`, snapshot counter, and draft are all unchanged
 - **AND** a later successful publish receives the next expected snapshot number
+
+#### Scenario: Process stops mid-publish
+- **WHEN** the application process stops abruptly after a publish's snapshot has been written but before it commits
+- **THEN** after a restart no new snapshot exists and the article's status, live snapshot, and `published_at` are as they were before the publish
 
 ### Requirement: Unpublish is a status change only
 Unpublishing SHALL change a `published` article's status to `unpublished` and nothing else. The live snapshot reference, `published_at`, the draft, and every snapshot SHALL be kept. Unpublishing an article that is not `published` SHALL return 409.
@@ -101,12 +105,17 @@ The stored article SHALL only ever be in one of these states, and the database S
 - **WHEN** a write outside the API tries to set an article to `published` with no live snapshot
 - **THEN** the database rejects the write
 
+#### Scenario: Publish and unpublish at the same time
+- **WHEN** a publish and an unpublish for the same published article run at the same time
+- **THEN** they run one after the other and both outcomes are legal states
+- **AND** the final status, live snapshot, and `published_at` are consistent with each other
+
 #### Scenario: Pointer to another article's snapshot is rejected
 - **WHEN** a write outside the API tries to point an article at a snapshot that belongs to a different article
 - **THEN** the database rejects the write
 
 ### Requirement: Snapshots are immutable
-Once created, a snapshot's content and metadata SHALL never change. The database itself SHALL reject any modification of any snapshot, live or historical, including modifications made outside the API. The API SHALL NOT offer any way to edit a snapshot.
+Once created, a snapshot's content and metadata SHALL never change. The database itself SHALL reject any modification of any snapshot, live or historical, including modifications made outside the API. The API SHALL NOT offer any way to edit a snapshot. Published content SHALL change only by editing the draft and publishing it as a new snapshot.
 
 #### Scenario: Direct modification of the live snapshot is rejected
 - **WHEN** a direct database update is attempted on an article's live snapshot

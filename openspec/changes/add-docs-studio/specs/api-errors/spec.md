@@ -47,6 +47,18 @@ When a write cannot get the database lock within the configured busy timeout, th
 - **THEN** the API returns 503 with `{"code": 503, "title": "Service temporarily unavailable", "message": "The database is busy."}` and no `Retry-After` header
 - **AND** the draft is unchanged and later writes succeed once the lock is released
 
+### Requirement: Database unavailable blocks every endpoint
+If the database cannot be opened or initialized, every API endpoint, including the health check, SHALL return 503 with title "Database unavailable" instead of any partial result. The body SHALL NOT include the database path or the underlying error, which SHALL be logged. Once the database can be opened again, endpoints SHALL work without restarting the application.
+
+#### Scenario: Database cannot be opened
+- **WHEN** the configured database path cannot be opened
+- **THEN** writer, public, and health endpoints all return 503 with `{"code": 503, "title": "Database unavailable", "message": "..."}`
+- **AND** the body contains no file path and the underlying error is written to the server log
+
+#### Scenario: Recovery without restart
+- **WHEN** the database becomes openable again while the application is running
+- **THEN** the next request succeeds
+
 ### Requirement: Unexpected errors are generic
 Any other failure SHALL return 500 with `{"code": 500, "title": "Internal server error"}`. The response SHALL NOT include SQL, stack traces, file paths, or connection details; the full error SHALL be logged on the server. Integrity violations that indicate a bug, such as a broken consistency rule, SHALL return 500.
 

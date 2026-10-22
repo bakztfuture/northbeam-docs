@@ -83,11 +83,11 @@ The writer API SHALL replace an article's draft title, body, and tags with the s
 - **AND** the number of snapshots is unchanged
 
 ### Requirement: Detect stale draft writes
-Every draft save SHALL include the draft version the writer last loaded. If it does not match the article's current draft version, the save SHALL be rejected with 409 and the draft SHALL be left unchanged.
+Every draft save SHALL include the draft version the writer last loaded. If it does not match the article's current draft version, the save SHALL be rejected with 409 and a clear "Draft conflict" error saying the draft changed since it was loaded, and the draft SHALL be left unchanged.
 
 #### Scenario: Second writer with an old copy is rejected
 - **WHEN** two writers load the same draft at version 3, the first saves successfully, and the second then saves with version 3
-- **THEN** the second save returns 409
+- **THEN** the second save returns 409 with title "Draft conflict"
 - **AND** the draft still contains the first writer's content at version 4
 
 #### Scenario: Saving a missing article

@@ -16,7 +16,7 @@ Northbeam's internal writers need to author documentation articles without accid
   - publish is one `BEGIN IMMEDIATE` transaction, so it fully succeeds or fully rolls back.
 - Optimistic concurrency on the draft: save, restore, and publish carry `expectedDraftVersion`; a stale request returns 409 instead of overwriting newer content.
 - Unpublish is a status change only: the live-snapshot pointer and `published_at` are kept, so the last published snapshot stays protected until a later publish moves the pointer.
-- Centralized error handling: one flat `{code, title, message?}` shape for known errors, expected database errors mapped to 409/503, everything unexpected returned as a generic 500.
+- Centralized error handling: one flat `{code, title, message?}` shape for known errors, expected database errors mapped to 409/503, a database that cannot be opened returned as 503 on every endpoint, everything unexpected returned as a generic 500.
 - New Vue 3 + TypeScript + Vite frontend: a writer UI (article list, create form, editor with Markdown preview, publish controls, version history panel) and a public reader UI (list + article page), sharing one safe Markdown renderer.
 - The writer UI disables Publish while the editor has unsaved changes, because publish snapshots the **saved** draft, not the editor contents.
 - Automated backend tests for every lifecycle invariant, runnable with one command, including a direct-SQL immutability test and a publish-rollback test that injects a failure into the real transaction.
@@ -39,7 +39,7 @@ None. This is the first change in the project.
 
 ## Impact
 
-- **New code:** `backend/` (FastAPI app, SQLite schema and connection setup, services, tests) and `frontend/` (Vue 3 app).
+- **New code:** `backend/` (FastAPI app, repositories for SQL and connections, a `migrations/` folder with the initial schema, services, routes, tests) and `frontend/` (Vue 3 app).
 - **New dependencies:** backend: FastAPI, Uvicorn, Pydantic, pytest, httpx (test client); the stdlib `sqlite3` module is used directly with no ORM. Frontend: Vue 3, Vue Router, Vite, TypeScript, markdown-it, Vitest.
-- **Data:** a local SQLite file (ignored by git), created on startup (no migration tooling).
+- **Data:** a local SQLite file (ignored by git), created on startup from the initial schema file in `migrations/`. There is no migration handler yet; the folder is in place for future schema changes.
 - **Out of scope:** authentication and roles, WYSIWYG or rich Markdown directives, media uploads, search and pagination, caching, deployment and CI/CD, draft revision history, a leave-page warning for unsaved edits, a concurrency counter for publish/unpublish state, idempotent publish, and other stretch goals.

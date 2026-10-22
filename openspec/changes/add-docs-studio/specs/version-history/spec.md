@@ -50,7 +50,7 @@ Restoring SHALL copy a snapshot's title, body, and tags into the article's draft
 - **THEN** a new snapshot 3 with snapshot 1's content is created and becomes live
 
 ### Requirement: Restore requires a current draft version
-Every restore request SHALL include the draft version the writer last loaded. If it does not match the article's current draft version, the restore SHALL be rejected with 409 and the draft SHALL be left unchanged. A missing snapshot SHALL return 404.
+Every restore request SHALL include the draft version the writer last loaded. If it does not match the article's current draft version, the restore SHALL be rejected with 409 and the draft SHALL be left unchanged. A missing snapshot, or one belonging to another article, SHALL return 404.
 
 #### Scenario: Restore with a stale draft version
 - **WHEN** the draft was saved by someone else after this writer loaded it, and this writer restores with the older version
