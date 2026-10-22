@@ -379,7 +379,7 @@ pytest; each test gets its own SQLite file in `tmp_path`. A fixture builds the a
   The individual tests cover each rule in isolation; this one proves they hold together in the order a writer would actually use them.
 - **Restart durability:** create and publish through one app instance, dispose of it, build a new instance on the same file, and read everything back.
 - **Constraint tests:** use plain connections to try the forbidden writes directly (a published or unpublished article without a pointer; a pointer to another article's snapshot; deleting the pointed-to snapshot). Each must be rejected.
-- **Frontend:** no automated tests for now. The lifecycle rules are what this project is judged on, and they are all enforced and tested in the backend, so that is where the testing effort goes. Scenarios marked (FE) in the specs are checked by hand in the browser, as each frontend task's verification step and again in the final walkthrough (task 12.2).
+- **Frontend:** no automated tests for now. The lifecycle rules are what this project is judged on, and they are all enforced and tested in the backend, so that is where the testing effort goes. Scenarios marked (FE) in the specs are checked by hand in the browser, as each frontend task's verification step and again in the final walkthrough (task 6.2).
 
 *Alternatives for the rollback test:*
 - A temporary trigger that aborts the UPDATE: works, but adds test-only database setup.
@@ -470,7 +470,7 @@ The dependency override was chosen because production code stays unchanged and t
   - no raw sizes for spacing or type (`px` or `rem` literals);
   - no new custom properties (`--…` definitions).
 
-  A new value is added to `tokens.css` first, then used. The rule is checked by a search of `src/components` and `src/views` for hex colors, `px`/`rem` literals, and `--` definitions (task 10.9). It is not enforced by a linter, to keep tooling minimal.
+  A new value is added to `tokens.css` first, then used. The rule is checked by a search of `src/components` and `src/views` for hex colors, `px`/`rem` literals, and `--` definitions (task 5.6). It is not enforced by a linter, to keep tooling minimal.
 
 ### 9. Invariants and edge cases
 
@@ -489,66 +489,66 @@ The **live** snapshot is the one the pointer names while the status is `publishe
 
 | # | Invariant | Spec requirement | Enforced by | Tests (tasks) |
 |---|---|---|---|---|
-| INV-1 | A snapshot never changes once created, live or not. Published content changes only by editing the draft and publishing a new snapshot. | article-publishing: Snapshots are immutable | `BEFORE UPDATE` trigger; no snapshot-edit endpoint; publish copies the saved draft | 2.4, 5.6 |
-| INV-2 | Readers only ever see the live snapshot of a `published` article. They never see a draft, and see nothing at all for draft-only or unpublished articles. | public-reader: List published articles; Read a published article; Hide everything that is not published | Public queries join on the pointer, filter on `published`, and never select draft columns | 7.1, 7.2 |
-| INV-3 | Status, pointer, and `published_at` always agree: a draft has neither; a published or unpublished article has both, and the pointer names one of its own snapshots. This holds after a crash and under concurrent requests. | article-publishing: Publication state is always consistent | CHECK constraint; composite FK; `BEGIN IMMEDIATE`; journal + `synchronous = FULL` (crash case rests on SQLite's guarantee, Decision 3) | 2.5, 5.4 |
-| INV-4 | A publish is all or nothing: snapshot, counter, status, pointer, and `published_at` change together or not at all. | article-publishing: Publishing is atomic | One `write_txn` | 5.3 |
-| INV-5 | The snapshot an article points to can never be deleted, whether the article is published or unpublished. | version-history: The pointed-to snapshot cannot be deleted | Service check plus `ON DELETE RESTRICT` | 2.5, 6.3 |
-| INV-6 | Restore only copies a snapshot into the draft. It never publishes, and never creates, changes, or deletes a snapshot. | version-history: Restore a snapshot into the draft | Restore only updates `articles` | 6.2 |
-| INV-7 | A write based on an out-of-date draft (save, restore, or publish) is rejected with 409, never applied. | article-authoring: Detect stale draft writes; article-publishing: Publishing requires a current draft version; version-history: Restore requires a current draft version | Compare-and-set on `draft_version` | 4.3, 5.2, 6.2 |
-| INV-8 | Unpublish changes only the status. Every snapshot, the pointer, and `published_at` survive it. | article-publishing: Unpublish is a status change only | Status-only UPDATE; CHECK requires the pointer | 5.5 |
-| INV-9 | `published_at` is set on the first publish and never changes afterwards. | article-publishing: Republishing preserves the first publication time | `COALESCE(published_at, now)` | 5.2, 5.5, 7.3 |
-| INV-10 | Snapshot numbers per article only go up and are never reused, even after deletions. | article-publishing: Snapshot numbers increase and are never reused | Monotonic counter; `UNIQUE(article_id, version_number)` | 5.4, 6.4 |
-| INV-11 | A slug is unique and never changes after the article is created. | article-authoring: Slugs are unique; Slugs are fixed after creation | `UNIQUE(slug)`; draft saves reject `slug` | 4.1, 4.3 |
-| INV-12 | A failed write leaves no partial change behind. | api-errors: Failed writes leave no partial changes | `write_txn` rolls back on any exception | 2.3, 5.3 |
+| INV-1 | A snapshot never changes once created, live or not. Published content changes only by editing the draft and publishing a new snapshot. | article-publishing: Snapshots are immutable | `BEFORE UPDATE` trigger; no snapshot-edit endpoint; publish copies the saved draft | 1.4, 2.3 |
+| INV-2 | Readers only ever see the live snapshot of a `published` article. They never see a draft, and see nothing at all for draft-only or unpublished articles. | public-reader: List published articles; Read a published article; Hide everything that is not published | Public queries join on the pointer, filter on `published`, and never select draft columns | 3.3 |
+| INV-3 | Status, pointer, and `published_at` always agree: a draft has neither; a published or unpublished article has both, and the pointer names one of its own snapshots. This holds after a crash and under concurrent requests. | article-publishing: Publication state is always consistent | CHECK constraint; composite FK; `BEGIN IMMEDIATE`; journal + `synchronous = FULL` (crash case rests on SQLite's guarantee, Decision 3) | 1.4, 2.3 |
+| INV-4 | A publish is all or nothing: snapshot, counter, status, pointer, and `published_at` change together or not at all. | article-publishing: Publishing is atomic | One `write_txn` | 2.3 |
+| INV-5 | The snapshot an article points to can never be deleted, whether the article is published or unpublished. | version-history: The pointed-to snapshot cannot be deleted | Service check plus `ON DELETE RESTRICT` | 1.4, 3.3 |
+| INV-6 | Restore only copies a snapshot into the draft. It never publishes, and never creates, changes, or deletes a snapshot. | version-history: Restore a snapshot into the draft | Restore only updates `articles` | 3.3 |
+| INV-7 | A write based on an out-of-date draft (save, restore, or publish) is rejected with 409, never applied. | article-authoring: Detect stale draft writes; article-publishing: Publishing requires a current draft version; version-history: Restore requires a current draft version | Compare-and-set on `draft_version` | 2.3, 3.3 |
+| INV-8 | Unpublish changes only the status. Every snapshot, the pointer, and `published_at` survive it. | article-publishing: Unpublish is a status change only | Status-only UPDATE; CHECK requires the pointer | 2.3 |
+| INV-9 | `published_at` is set on the first publish and never changes afterwards. | article-publishing: Republishing preserves the first publication time | `COALESCE(published_at, now)` | 2.3, 3.3 |
+| INV-10 | Snapshot numbers per article only go up and are never reused, even after deletions. | article-publishing: Snapshot numbers increase and are never reused | Monotonic counter; `UNIQUE(article_id, version_number)` | 2.3, 3.3 |
+| INV-11 | A slug is unique and never changes after the article is created. | article-authoring: Slugs are unique; Slugs are fixed after creation | `UNIQUE(slug)`; draft saves reject `slug` | 2.3 |
+| INV-12 | A failed write leaves no partial change behind. | api-errors: Failed writes leave no partial changes | `write_txn` rolls back on any exception | 1.4, 2.3 |
 
 **Edge cases:**
 
 | # | Situation | Expected result | Tests (tasks) |
 |---|---|---|---|
-| EC-01 | Two writers load the same draft; both save | First succeeds; second gets 409 "Draft conflict"; first writer's content kept | 4.3 |
-| EC-02 | Publish with an out-of-date draft version | 409; no snapshot created | 5.2 |
-| EC-03 | Publish fails after the snapshot is written | Full rollback: no snapshot; status, pointer, `published_at`, counter unchanged | 5.3 |
-| EC-04 | Two publishes of the same article at once | Both succeed one after the other, with consecutive numbers | 5.4 |
-| EC-05 | Direct SQL update of a snapshot, live or historical | Rejected by the database; snapshot unchanged | 2.4, 5.6 |
-| EC-06 | Draft edited and saved after publishing | Public content unchanged | 7.2 |
-| EC-07 | Delete the live snapshot | 409; snapshot kept | 6.3 |
-| EC-08 | Delete a historical snapshot | 204; only that snapshot removed | 6.3 |
-| EC-09 | Unpublish a published article | Public returns 404; every snapshot kept | 5.5, 7.2 |
-| EC-10 | Status `unpublished`, pointer still on the last published snapshot: delete that snapshot | 409; snapshot kept (design limitation: the pointer is not cleared on unpublish) | 6.3 |
-| EC-11 | Restore an older snapshot | Draft equals that snapshot; history unchanged; public content unchanged | 6.2 |
-| EC-12 | Restore with an out-of-date draft version | 409; draft unchanged | 6.2 |
-| EC-13 | Delete the highest snapshot (not pointed to), then publish | New number is one above the counter; the deleted number is not reused | 6.4 |
-| EC-14 | Public read of a draft-only article | 404 | 7.2 |
-| EC-15 | Public read of an unpublished article | 404 | 7.2 |
-| EC-16 | Create with a slug that is already taken | 409; nothing created | 4.1 |
-| EC-17 | View, restore, or delete a snapshot under the wrong article | 404 | 6.1, 6.2, 6.3 |
-| EC-18 | Invalid request body or malformed id | Framework-default 422 | 3.3 |
-| EC-19 | Write lock not available within the busy timeout | 503 "Service temporarily unavailable"; no partial change | 8.1 |
-| EC-20 | Unpublish an article that was never published | 409 | 5.5 |
-| EC-21 | Publish again after unpublishing | New snapshot with the next number; `published_at` unchanged | 5.5 |
-| EC-22 | Publish twice with no draft changes | Two snapshots with identical content | 5.2 |
-| EC-23 | Known application error | Flat `{code, title, message?}` body | 3.1 |
-| EC-24 | Unexpected exception | Generic 500; details logged, not returned | 3.2 |
-| EC-25 | (FE) Preview unsaved Markdown | Renders in the browser; no request sent | 10.3 |
-| EC-26 | (FE) View a historical snapshot | Shows that snapshot's content, not the draft | 10.8 |
-| EC-27 | A write fails partway for any reason | Rolled back before the error response; lock released | 2.3 |
-| EC-28 | Point an article at another article's snapshot (direct SQL) | Rejected by the database | 2.5 |
-| EC-29 | Application restarts | Every article, draft, snapshot, and state unchanged | 8.2 |
-| EC-30 | Unpublish an already unpublished article | 409 | 5.5 |
-| EC-31 | Republish moves the pointer, then delete the previously pointed-to snapshot | 204; allowed now that it is no longer pointed to | 6.3 |
-| EC-32 | Restore an old snapshot, then publish | A new snapshot (next number) with the old content; the old snapshot is not reused or re-pointed | 6.2 |
-| EC-33 | Publish and unpublish of the same article at once | Run one after the other; final state consistent | 5.4 |
-| EC-34 | Database cannot be opened | Every endpoint returns 503 "Database unavailable"; recovers without restart | 3.4, 4.2, 7.1 |
+| EC-01 | Two writers load the same draft; both save | First succeeds; second gets 409 "Draft conflict"; first writer's content kept | 2.3 |
+| EC-02 | Publish with an out-of-date draft version | 409; no snapshot created | 2.3 |
+| EC-03 | Publish fails after the snapshot is written | Full rollback: no snapshot; status, pointer, `published_at`, counter unchanged | 2.3 |
+| EC-04 | Two publishes of the same article at once | Both succeed one after the other, with consecutive numbers | 2.3 |
+| EC-05 | Direct SQL update of a snapshot, live or historical | Rejected by the database; snapshot unchanged | 1.4, 2.3 |
+| EC-06 | Draft edited and saved after publishing | Public content unchanged | 3.3 |
+| EC-07 | Delete the live snapshot | 409; snapshot kept | 3.3 |
+| EC-08 | Delete a historical snapshot | 204; only that snapshot removed | 3.3 |
+| EC-09 | Unpublish a published article | Public returns 404; every snapshot kept | 2.3, 3.3 |
+| EC-10 | Status `unpublished`, pointer still on the last published snapshot: delete that snapshot | 409; snapshot kept (design limitation: the pointer is not cleared on unpublish) | 3.3 |
+| EC-11 | Restore an older snapshot | Draft equals that snapshot; history unchanged; public content unchanged | 3.3 |
+| EC-12 | Restore with an out-of-date draft version | 409; draft unchanged | 3.3 |
+| EC-13 | Delete the highest snapshot (not pointed to), then publish | New number is one above the counter; the deleted number is not reused | 3.3 |
+| EC-14 | Public read of a draft-only article | 404 | 3.3 |
+| EC-15 | Public read of an unpublished article | 404 | 3.3 |
+| EC-16 | Create with a slug that is already taken | 409; nothing created | 2.3 |
+| EC-17 | View, restore, or delete a snapshot under the wrong article | 404 | 3.3 |
+| EC-18 | Invalid request body or malformed id | Framework-default 422 | 1.4 |
+| EC-19 | Write lock not available within the busy timeout | 503 "Service temporarily unavailable"; no partial change | 3.3 |
+| EC-20 | Unpublish an article that was never published | 409 | 2.3 |
+| EC-21 | Publish again after unpublishing | New snapshot with the next number; `published_at` unchanged | 2.3 |
+| EC-22 | Publish twice with no draft changes | Two snapshots with identical content | 2.3 |
+| EC-23 | Known application error | Flat `{code, title, message?}` body | 1.4 |
+| EC-24 | Unexpected exception | Generic 500; details logged, not returned | 1.4 |
+| EC-25 | (FE) Preview unsaved Markdown | Renders in the browser; no request sent | 5.6 |
+| EC-26 | (FE) View a historical snapshot | Shows that snapshot's content, not the draft | 5.6 |
+| EC-27 | A write fails partway for any reason | Rolled back before the error response; lock released | 1.4 |
+| EC-28 | Point an article at another article's snapshot (direct SQL) | Rejected by the database | 1.4 |
+| EC-29 | Application restarts | Every article, draft, snapshot, and state unchanged | 3.3 |
+| EC-30 | Unpublish an already unpublished article | 409 | 2.3 |
+| EC-31 | Republish moves the pointer, then delete the previously pointed-to snapshot | 204; allowed now that it is no longer pointed to | 3.3 |
+| EC-32 | Restore an old snapshot, then publish | A new snapshot (next number) with the old content; the old snapshot is not reused or re-pointed | 3.3 |
+| EC-33 | Publish and unpublish of the same article at once | Run one after the other; final state consistent | 2.3 |
+| EC-34 | Database cannot be opened | Every endpoint returns 503 "Database unavailable"; recovers without restart | 1.4, 2.3, 3.3 |
 | EC-35 | Process stops mid-publish | After restart the article is as before the publish (SQLite's guarantee; no test of our own) | — |
-| EC-36 | Draft save that includes a slug | 422; slug unchanged | 4.3 |
-| EC-37 | Public read of an unknown slug | 404, identical to EC-14 and EC-15 | 7.2 |
-| EC-38 | Tags with mixed case, spaces, or duplicates | Stored trimmed, lowercased, de-duplicated | 3.3 |
-| EC-43 | Body over 50,000 characters, or a tag over 100 characters | 422; nothing stored | 3.3 |
-| EC-39 | (FE) Editor has unsaved changes | Publish disabled with "Save your changes before publishing" | 10.4 |
-| EC-40 | (FE) Writer clicks Restore (or anything else) while a save or publish is in flight | Not available; only the in-flight request is sent | 10.6 |
-| EC-41 | (FE) Writer cancels the publish confirmation | No request is sent; nothing changes | 10.5 |
-| EC-42 | Status `unpublished`, pointer still on v3: delete a historical snapshot, v1 | 204; only v1 removed; status stays `unpublished` and the pointer stays on v3 | 6.3 |
+| EC-36 | Draft save that includes a slug | 422; slug unchanged | 2.3 |
+| EC-37 | Public read of an unknown slug | 404, identical to EC-14 and EC-15 | 3.3 |
+| EC-38 | Tags with mixed case, spaces, or duplicates | Stored trimmed, lowercased, de-duplicated | 1.4 |
+| EC-43 | Body over 50,000 characters, or a tag over 100 characters | 422; nothing stored | 1.4 |
+| EC-39 | (FE) Editor has unsaved changes | Publish disabled with "Save your changes before publishing" | 5.6 |
+| EC-40 | (FE) Writer clicks Restore (or anything else) while a save or publish is in flight | Not available; only the in-flight request is sent | 5.6 |
+| EC-41 | (FE) Writer cancels the publish confirmation | No request is sent; nothing changes | 5.6 |
+| EC-42 | Status `unpublished`, pointer still on v3: delete a historical snapshot, v1 | 204; only v1 removed; status stays `unpublished` and the pointer stays on v3 | 3.3 |
 
 ## Risks / Trade-offs
 
@@ -560,7 +560,7 @@ The **live** snapshot is the one the pointer names while the status is `publishe
 - [The app starts even when the database cannot be opened] → Deliberate, so clients get a clear 503 instead of "connection refused", and the app recovers without a restart. The failure is logged at startup and on each failed request, so it is not silent.
 - [Publishing unchanged content creates duplicate snapshots] → Intended for now. Idempotent publish is a known stretch goal and is out of scope.
 - [Saving a draft with no changes is accepted] → The API does not compare the submitted draft with the stored one, so an identical save still succeeds, increments `draft_version`, and updates `updated_at`. No data is lost, but another writer holding the old version will get a 409 they didn't strictly need. The editor could disable Save while `isDirty` is false, and the backend could skip the update when nothing changed; neither is in scope.
-- [No slug collision handling, and the slug race is not tested directly] → A slug that is already taken is rejected with 409; there is no automatic suffix or suggestion. If two creates with the same slug arrive at the same moment, both can pass the application check, and the database's `UNIQUE(slug)` constraint rejects the second, which the error mapping turns into a 409 (Decision 6). That mapping is tested (task 3.2) and so is the ordinary duplicate (task 4.1), but no test forces a real two-request race. Acceptable with a single writer; collision handling is a known stretch goal.
+- [No slug collision handling, and the slug race is not tested directly] → A slug that is already taken is rejected with 409; there is no automatic suffix or suggestion. If two creates with the same slug arrive at the same moment, both can pass the application check, and the database's `UNIQUE(slug)` constraint rejects the second, which the error mapping turns into a 409 (Decision 6). That mapping is tested (task 1.4) and so is the ordinary duplicate (task 2.3), but no test forces a real two-request race. Acceptable with a single writer; collision handling is a known stretch goal.
 - [The slug is not derived from the title] → The writer types the slug when creating the article; it is not generated from the title and does not follow later title changes. This keeps public URLs stable. Generating it from the title, with automatic suffixes on collisions, would be a later addition.
 - [No audit log] → Nothing records who did what and when beyond the timestamps already stored: `created_at`, `updated_at`, `published_at`, and each snapshot's `created_at`. There is no history of unpublishes, restores, or deletions, and no record of who acted, since there are no users. Acceptable with a single trusted writer and no authentication. The next step is an `article_events` table (article, action, actor, time) written inside the same transaction as each write. With users in place, sensitive actions such as publish or restore could then notify reviewers or require explicit approval.
 - [No rate limiting] → The API accepts any number of requests. Acceptable for an internal tool with no public write access; the public endpoints are read-only and cheap. Adding limits later belongs in middleware or in front of the app, for example a reverse proxy.
@@ -568,7 +568,7 @@ The **live** snapshot is the one the pointer names while the status is `publishe
 - [No dark mode] → Out of scope. Colors are all tokens on `:root`, so a dark theme would be a second set of color tokens under `@media (prefers-color-scheme: dark)`, with no component changes.
 - [Not designed for mobile] → Out of scope. The layout targets desktop and laptop screens and is not tested on phones. Because spacing, type, and layout all come from tokens and one grid, a responsive pass later means adding breakpoints in `grid.css` rather than reworking components.
 - [The rollback test recognises the UPDATE by its SQL text] → If the statement is reworded, the test fails loudly, because the publish then succeeds and its assertions break. So it cannot pass silently.
-- [No automated frontend or end-to-end tests] → Frontend behavior, including the publish modal, the busy flag, and Markdown safety, is checked by hand. Nothing tests the full path from browser to database automatically, so a UI regression, or a mismatch between the frontend and the API, would only be caught by the manual walkthrough (task 12.2). This is accepted because the lifecycle invariants are enforced and tested in the backend, so a UI bug cannot corrupt data. Next steps, in order: Vitest tests for the composables (where the logic lives, so no page rendering is needed), then a few Playwright end-to-end tests for create, publish, restore, and unpublish.
+- [No automated frontend or end-to-end tests] → Frontend behavior, including the publish modal, the busy flag, and Markdown safety, is checked by hand. Nothing tests the full path from browser to database automatically, so a UI regression, or a mismatch between the frontend and the API, would only be caught by the manual walkthrough (task 6.2). This is accepted because the lifecycle invariants are enforced and tested in the backend, so a UI bug cannot corrupt data. Next steps, in order: Vitest tests for the composables (where the logic lives, so no page rendering is needed), then a few Playwright end-to-end tests for create, publish, restore, and unpublish.
 - [The tokens-only rule is checked by a search, not a linter] → Cheap and enough for one developer. A Stylelint config with `color-no-hex` and unit restrictions would enforce it automatically.
 - [Native CSS nesting needs a current browser (Chrome 120+, Safari 17.2+, Firefox 117+)] → Fine for an internal tool and a reviewer's machine. Older browsers would need a build-time step such as Lightning CSS, which Vite supports.
 - [The busy flag relies on buttons disabling before a second click, with no separate guard] → Vue re-renders before the browser handles the next click, so this holds in practice. If it ever did not, the backend's draft-version 409 stops a duplicate save or publish from overwriting anything.
