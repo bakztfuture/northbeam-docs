@@ -34,8 +34,8 @@ Fixed constraints:
 ```
 backend/
   app/
-    main.py              create_app(settings): FastAPI app, lifespan, routers, error handlers
-    config.py            Settings: DB path, busy timeout (env-configurable)
+    main.py              create_app(settings): FastAPI app, lifespan, error handlers, and api_router
+    config.py            Settings: DB path, busy timeout, environment (env-configurable)
     errors.py            AppError and one subclass per known error, handlers
     models.py            Pydantic request/response models
     repositories/
@@ -47,7 +47,7 @@ backend/
     migrations/
       0001_initial_schema.sql   tables, constraints, trigger
     services/            authoring.py, publishing.py, history.py, public.py
-    routes/              admin.py, public.py, health.py
+    routes/              admin.py, public.py, health.py; router.py
   tests/
   pyproject.toml
 frontend/
@@ -97,7 +97,7 @@ repositories/  SQL only.
 
 Keeping transactions in services, not repositories, means one service call can combine several repository functions inside one `write_txn`. Publish is the main case: it needs an INSERT and an UPDATE that must succeed or fail together.
 
-`make setup` creates `backend/.venv` with `python3 -m venv` and installs the backend, then runs `npm install` in `frontend/`. It also runs `npx playwright install --only-shell chromium`, the headless browser the frontend E2E checks need (no full Chrome). `make test` is the single command for every test: the backend suite (`pytest`), then the frontend E2E checks; `make e2e` runs the E2E checks alone. `make dev` starts Uvicorn on port 8000 and Vite on port 5173 with a dev proxy from `/api` to the backend.
+`make setup` creates `backend/.venv` with `python3 -m venv` and installs the backend, then runs `npm install` in `frontend/`. It also runs `npx playwright install --only-shell chromium`, the headless browser the frontend E2E checks need (no full Chrome). `make test` is the single command for every test: the backend suite (`pytest`), then the frontend E2E checks; `make e2e` runs the E2E checks alone. `make start` is the main run command, in production mode: it builds the frontend (`npm run build`), then runs Uvicorn on port 8000 without `--reload` or the API docs, and `vite preview` on port 5173, which serves the built files and proxies `/api` to the backend. `make dev` is for development: Uvicorn with `--reload` and the API docs, and the Vite dev server on port 5173 with the same `/api` proxy.
 
 `make lint` checks both apps without changing anything and fails on any problem: Ruff (lint and format check) for the backend, ESLint and a Prettier check for the frontend. `make format` applies the same tools' fixes. Ruff is one fast tool for both jobs in Python. ESLint with `eslint-plugin-vue` and Prettier are the standard pair for Vue 3 single-file components, and `@vue/eslint-config-prettier` keeps them from disagreeing.
 
@@ -230,7 +230,7 @@ with write_txn(conn):        # BEGIN IMMEDIATE  (take the write lock now)
   Every write operation (create, save, publish, unpublish, restore, delete) runs inside exactly one `write_txn`. Reads run without a transaction, since each read endpoint's queries do not need a shared snapshot of the data.
 - **Why `BEGIN IMMEDIATE`:** taking the write lock at `BEGIN` rather than at the first write means the read-then-write sequence (check the draft version, then insert) cannot be interleaved with another writer. It also means lock waits happen at one predictable point, which the busy timeout governs.
 - **Crash safety.** SQLite's journal guarantees that a transaction that never committed is not visible after a restart, so a crash in the middle of a publish leaves the article exactly as it was before the publish. With `synchronous = FULL`, a transaction that did commit is still there after the restart. Together with the CHECK constraint, this rules out a stored state where the status and the pointer disagree.
-- **Configuration.** `busy_timeout` comes from `Settings` (default 5000 ms, env `DOCS_DB_BUSY_TIMEOUT_MS`), so tests can use about 100 ms. The database path is also configurable (`DOCS_DB_PATH`, default `backend/data/docs.sqlite3`). The parent directory is created if it is missing.
+- **Configuration.** `busy_timeout` comes from `Settings` (default 5000 ms, env `DOCS_DB_BUSY_TIMEOUT_MS`), so tests can use about 100 ms. The database path is also configurable (`DOCS_DB_PATH`, default `backend/data/docs.sqlite3`). The parent directory is created if it is missing. `DOCS_ENV` picks the environment: the app runs as production unless it is exactly `development`, and only development serves the interactive API docs (`/docs`, `/redoc`, `/openapi.json`), so a missing or mistyped value never exposes them. `make dev` sets `DOCS_ENV=development`; `make start` leaves it unset. Both run on Uvicorn; development adds `--reload`.
 
 **Schema setup (not a migration handler).** `backend/app/migrations/` holds a single file, `0001_initial_schema.sql`. On startup, `init_db(conn)` sets WAL mode and runs that file in one transaction. Because every statement uses `IF NOT EXISTS`, running it against an existing database changes nothing.
 
@@ -647,5 +647,7 @@ The **live** snapshot is the one the pointer names while the status is `publishe
 - [Native CSS nesting needs a current browser (Chrome 120+, Safari 17.2+, Firefox 117+)] → Fine for an internal tool and a reviewer's machine. Older browsers would need a build-time step such as Lightning CSS, which Vite supports.
 - [The busy flag relies on buttons disabling before a second click, with no separate guard] → Vue re-renders before the browser handles the next click, so this holds in practice. If it ever did not, the backend's draft-version 409 stops a duplicate save or publish from overwriting anything.
 - [Only a single Uvicorn worker is tested] → Correctness comes from SQLite locking, not process memory, so more workers stay correct. This is documented but not tested.
+- [`make start` serves the frontend build with `vite preview`] → It runs the built app the way production would, from static files with no dev server, but `vite preview` is meant for checking a build locally, not as a hardened production server. A real deployment would serve `frontend/dist/` from nginx, Caddy, or a CDN, with the same two jobs: send unknown paths to `index.html` for the router, and forward `/api` to the API. Deployment is out of scope.
+- [Plain Uvicorn, no process manager] → The API runs as a single Uvicorn process (with `--reload` in development). Something more capable, such as Gunicorn running Uvicorn workers, or `uvicorn --workers`, would add several processes and automatic restarts of crashed workers. That is not needed for an internal tool on SQLite, where writes queue for the database lock whatever the worker count. It would be revisited with deployment, which is out of scope.
 - [Only the latest saved draft is stored; draft saves have no history] → Saving increments `draft_version` for concurrency but keeps no earlier draft. Published snapshots are the version history. An overwritten unpublished draft cannot be recovered, which is acceptable because the brief's safety net is about publishes. A "save as version" feature would be the extension.
 - [No overall request timeout] → The only time limit is SQLite's busy timeout. It bounds how long a write waits for the lock (5 s by default), not how long a request takes. There is no HTTP deadline, no write queue, and no automatic retry. A request that cannot get the lock returns 503 without a `Retry-After` header, and the UI shows the error without retrying; the writer can simply try the action again. Writes are a few short statements, so a server-side deadline would add complexity without a real case to handle.

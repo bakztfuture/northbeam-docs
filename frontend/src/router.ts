@@ -20,4 +20,8 @@ export const router = createRouter({
       props: true,
     },
   ],
+  // Every new page starts at the top
+  scrollBehavior(_to, _from, savedPosition) {
+    return savedPosition ?? { top: 0 }
+  },
 })

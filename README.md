@@ -12,7 +12,7 @@ An internal docs studio: writers edit a single draft per article, publish it as 
 
 ## Getting started
 
-Installing, testing, and running the app are each a single command, run from the repository root.
+Installing, running, and testing the app are each a single command, run from the repository root.
 
 **Install everything** (backend virtualenv and dependencies, the frontend's npm packages, and the headless browser the E2E checks run in):
 
@@ -20,13 +20,19 @@ Installing, testing, and running the app are each a single command, run from the
 make setup
 ```
 
-**Run all tests** (the backend suite, then the frontend E2E checks against a mocked API:
+**Run the app** (production mode: builds the frontend, then starts the API on port 8000 and serves the built app on http://localhost:5173; Ctrl+C stops both):
+
+```bash
+make start
+```
+
+**Run all tests** (the backend suite, then the frontend E2E checks against a mocked API; `make e2e` runs just the E2E checks):
 
 ```bash
 make test
 ```
 
-**Start the dev servers** (API on http://localhost:8000 and frontend on http://localhost:5173, which proxies `/api` to the API; Ctrl+C stops both):
+**Develop** (the same ports, but with the Vite dev server and hot reload, the API restarting on code changes, and the interactive API docs at http://localhost:8000/docs):
 
 ```bash
 make dev
@@ -56,6 +62,7 @@ make format
 |---|---|---|
 | `DOCS_DB_PATH` | `backend/data/docs.sqlite3` | SQLite file; its parent directory is created if missing |
 | `DOCS_DB_BUSY_TIMEOUT_MS` | `5000` | How long a write waits for the database lock before returning 503 |
+| `DOCS_ENV` | `production` | `development` serves the interactive API docs at `/docs`, `/redoc`, and `/openapi.json`; any other value, or none, turns them off. `make dev` sets `development` |
 
 ## Data model
 

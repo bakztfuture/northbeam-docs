@@ -5,7 +5,7 @@ Six groups, built layer by layer. Each group is one commit and is reviewable on 
 ## 1. Foundations: scaffold, database, errors
 
 - [x] 1.1 Scaffold the project
-  - `backend/` with `pyproject.toml` (FastAPI, Uvicorn, Pydantic; dev: pytest, httpx), `app/main.py` with `create_app(settings)` and a `lifespan` handler, empty `repositories/`, `migrations/`, `services/`, and `routes/` packages, and `app/config.py` with `Settings` (`DOCS_DB_PATH`, `DOCS_DB_BUSY_TIMEOUT_MS`, default 5000)
+  - `backend/` with `pyproject.toml` (FastAPI, Uvicorn, Pydantic; dev: pytest, httpx), `app/main.py` with `create_app(settings)` and a `lifespan` handler, empty `repositories/`, `migrations/`, `services/`, and `routes/` packages, and `app/config.py` with `Settings` (`DOCS_DB_PATH`, `DOCS_DB_BUSY_TIMEOUT_MS`, default 5000; `DOCS_ENV`, production unless `development`, which alone serves the API docs)
   - `frontend/` with Vite + Vue 3 + TypeScript, Vue Router, and markdown-it (no CSS preprocessor), empty `services/`, `composables/`, `views/`, `components/`, and `styles/` folders, and a dev proxy from `/api` to `localhost:8000`
   - Root `Makefile` with `setup`, `dev`, and `test`; `README.md` with prerequisites (Python 3.12+, Node 20.19+) and those commands
   - Verify: `make setup` then `make dev` starts both apps from a clean checkout
@@ -35,7 +35,7 @@ Six groups, built layer by layer. Each group is one commit and is reviewable on 
   - `list_articles`: `GET /api/admin/articles` → `list[ArticleListItem]`, newest `updatedAt` first
   - `get_article`: `GET /api/admin/articles/{articleId}` → `AdminArticle`
   - `save_draft`: `PATCH /api/admin/articles/{articleId}/draft`, `SaveDraftRequest` → `AdminArticle`, with compare-and-set on `draft_version`
-  - Response models `AdminArticle` (with nested `draft`) and `ArticleListItem` in the Responses section of `models.py`; the admin router included in `routes/__init__.py` under `/admin`
+  - Response models `AdminArticle` (with nested `draft`) and `ArticleListItem` in the Responses section of `models.py`; the admin router included in `routes/router.py` under `/admin`
 - [x] 2.2 Publishing endpoints in `routes/admin.py`, with rules in `services/publishing.py`
   - `publish_article`: `POST .../publish`, `PublishArticleRequest` → 201 `PublishedArticle` (`article` plus the new `snapshot`), as one `write_txn`: check the version, INSERT the snapshot, UPDATE the article with `COALESCE(published_at, now)`
   - `unpublish_article`: `POST .../unpublish` → `AdminArticle`, as a status-only change
@@ -56,7 +56,7 @@ Six groups, built layer by layer. Each group is one commit and is reviewable on 
   - `restore_snapshot`: `POST .../snapshots/{snapshotId}/restore`, `RestoreSnapshotRequest` → `AdminArticle`, with compare-and-set
   - `delete_snapshot`: `DELETE .../snapshots/{snapshotId}` → 204, refused for the pointed-to snapshot
   - Response model `SnapshotListItem`
-- [x] 3.2 Public endpoints in `routes/public.py`, with rules in `services/public.py`; the public router included in `routes/__init__.py` under `/public`
+- [x] 3.2 Public endpoints in `routes/public.py`, with rules in `services/public.py`; the public router included in `routes/router.py` under `/public`
   - `list_public_articles`: `GET /api/public/articles` → `list[PublicArticleListItem]`, published only, title and tags from the live snapshot, newest `publishedAt` first
   - `get_public_article`: `GET /api/public/articles/{slug}` → `PublicArticle`
   - Response models `PublicArticle` and `PublicArticleListItem`, with no draft fields
@@ -95,7 +95,7 @@ Six groups, built layer by layer. Each group is one commit and is reviewable on 
 ## 6. README and final check
 
 - [ ] 6.1 Complete the README: how to use the admin, the invariants and edge-case tables (design Decision 9), every tradeoff from the design's Risks / Trade-offs section (including at least one paragraph on a tradeoff made under time pressure and what would change with more time), and what is missing or next
-- [ ] 6.2 From a fresh clone, run `make setup`, `make lint`, `make test`, and `make dev`, and walk through create, edit, publish (confirm and cancel), edit again, view public, restore, unpublish, and delete; every step behaves as the specs describe
+- [ ] 6.2 From a fresh clone, run `make setup`, `make lint`, `make test`, and `make start` (the production-mode run), and walk through create, edit, publish (confirm and cancel), edit again, view public, restore, unpublish, and delete; every step behaves as the specs describe
 
 ## Workflow follow-up
 

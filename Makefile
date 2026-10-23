@@ -2,7 +2,7 @@ PYTHON ?= python3
 VENV := backend/.venv
 VENV_BIN := $(VENV)/bin
 
-.PHONY: setup dev dev-backend dev-frontend test e2e lint format
+.PHONY: setup start start-backend start-frontend dev dev-backend dev-frontend test e2e lint format
 
 # The last step fetches the headless browser the frontend E2E checks run in (no full Chrome).
 setup:
@@ -12,12 +12,25 @@ setup:
 	cd frontend && npm install
 	cd frontend && npx playwright install --only-shell chromium
 
-# Starts the API on :8000 and Vite on :5173; Ctrl+C stops both.
+# The main run command, in production mode: builds the frontend, then runs the API on :8000
+# Open http://localhost:5173. Ctrl+C stops both.
+start:
+	cd frontend && npm run build
+	$(MAKE) -j2 start-backend start-frontend
+
+start-backend:
+	cd backend && .venv/bin/uvicorn app.main:app --port 8000
+
+start-frontend:
+	cd frontend && npm run preview -- --port 5173 --strictPort
+
+# Development: the API on :8000 (auto-reload, API docs at /docs) and the Vite dev server on
+# :5173, which proxies /api to it. Ctrl+C stops both.
 dev:
 	$(MAKE) -j2 dev-backend dev-frontend
 
 dev-backend:
-	cd backend && .venv/bin/uvicorn app.main:app --reload --port 8000
+	cd backend && DOCS_ENV=development .venv/bin/uvicorn app.main:app --reload --port 8000
 
 dev-frontend:
 	cd frontend && npm run dev

@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from app.config import Settings
 from app.errors import register_error_handlers
 from app.repositories.database import try_init_db
-from app.routes import api_router
+from app.routes.router import api_router
 
 API_PREFIX = "/api"
 
@@ -20,8 +20,25 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
-    app = FastAPI(title="Northbeam Docs", lifespan=lifespan)
-    app.state.settings = settings or Settings()
+    settings = settings or Settings()
+    # The interactive API docs (/docs, /redoc, /openapi.json) exist only in development.
+    if settings.is_production:
+        app = FastAPI(
+            title="Northbeam Docs",
+            lifespan=lifespan,
+            docs_url=None,
+            redoc_url=None,
+            openapi_url=None,
+        )
+    else:
+        app = FastAPI(
+            title="Northbeam Docs",
+            lifespan=lifespan,
+            docs_url="/docs",
+            redoc_url="/redoc",
+            openapi_url="/openapi.json",
+        )
+    app.state.settings = settings
     app.state.db_ready = False
     register_error_handlers(app)
     app.include_router(api_router, prefix=API_PREFIX)
