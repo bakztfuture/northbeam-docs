@@ -1,7 +1,3 @@
-from itertools import count
-
-from app.repositories import queries
-
 from ..helpers import ARTICLES, create_article, get_article, publish, save_draft, unpublish
 
 ADMIN_ARTICLE_FIELDS = {
@@ -82,10 +78,7 @@ def test_writer_admin_list_returns_all_status_types(client):
     assert all(set(item) == {"id", "slug", "title", "status", "updatedAt"} for item in items)
 
 
-def test_list_is_newest_updated_first_and_publishing_does_not_reorder_it(client, monkeypatch):
-    # A clock that ticks once per call, so every write gets a distinct time.
-    ticks = count()
-    monkeypatch.setattr(queries, "utc_now", lambda: f"2026-01-01T00:00:{next(ticks):02d}.000Z")
+def test_list_is_newest_updated_first_and_publishing_does_not_reorder_it(client, ticking_clock):
     a = create_article(client, slug="a")
     b = create_article(client, slug="b")
     save_draft(client, a, title="A edited")

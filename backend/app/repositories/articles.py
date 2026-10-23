@@ -7,7 +7,7 @@ None of them opens a transaction or raises HTTP errors; services do both.
 import json
 import sqlite3
 
-from app.repositories.queries import Row, execute, fetch_all, fetch_one, insert
+from app.repositories.queries import Row, delete, execute, fetch_all, fetch_one, insert
 
 
 def _parse_tags_on_article(article: Row | None) -> Row | None:
@@ -100,9 +100,16 @@ def insert_version(
 
 
 def get_version(conn: sqlite3.Connection, article_id: str, version_id: str) -> Row | None:
-    return _parse_tags_on_version(
+    version = _parse_tags_on_version(
         fetch_one(conn, "SELECT * FROM article_versions WHERE id = ? AND article_id = ?", (version_id, article_id))
     )
+    if version is None:
+        return None
+
+    # Compute is_current (does the article's pointer name this snapshot?) before sending it back to the frontend.
+    article = get_article(conn, article_id)
+    version["is_current"] = article is not None and version["id"] == article["current_published_version_id"]
+    return version
 
 
 def set_published(conn: sqlite3.Connection, article_id: str, version_id: str, version_number: int, now: str) -> None:
@@ -121,3 +128,42 @@ def set_unpublished(conn: sqlite3.Connection, article_id: str) -> int:
     return execute(
         conn, "UPDATE articles SET status = 'unpublished' WHERE id = ? AND status = 'published'", (article_id,)
     )
+
+
+def list_versions(conn: sqlite3.Connection, article_id: str) -> list[Row]:
+    """Every snapshot of an article, newest first."""
+    rows = fetch_all(
+        conn, "SELECT * FROM article_versions WHERE article_id = ? ORDER BY version_number DESC", (article_id,)
+    )
+    versions = [_parse_tags_on_version(row) for row in rows]
+
+    # Compute is_current (does the article's pointer name this snapshot?) before sending it back to the frontend.
+    article = get_article(conn, article_id)
+    pointer = article["current_published_version_id"] if article is not None else None
+    for version in versions:
+        version["is_current"] = version["id"] == pointer
+    return versions
+
+
+def delete_version(conn: sqlite3.Connection, article_id: str, version_id: str) -> int:
+    """Returns the number of rows deleted. ON DELETE RESTRICT refuses the pointed-to snapshot."""
+    return delete(conn, "article_versions", {"id": version_id, "article_id": article_id})
+
+
+# --- Public reads: only snapshot columns plus slug and published_at, so draft columns cannot leak ---
+
+_PUBLIC_SELECT = (
+    "SELECT a.slug, a.published_at, v.title, v.body, v.tags"
+    " FROM articles a JOIN article_versions v"
+    " ON v.id = a.current_published_version_id AND v.article_id = a.id"
+    " WHERE a.status = 'published'"
+)
+
+
+def list_public_articles(conn: sqlite3.Connection) -> list[Row]:
+    rows = fetch_all(conn, f"{_PUBLIC_SELECT} ORDER BY a.published_at DESC, a.slug")
+    return [_parse_tags_on_version(row) for row in rows]
+
+
+def get_public_article(conn: sqlite3.Connection, slug: str) -> Row | None:
+    return _parse_tags_on_version(fetch_one(conn, f"{_PUBLIC_SELECT} AND a.slug = ?", (slug,)))

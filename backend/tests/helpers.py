@@ -3,6 +3,7 @@
 from fastapi.testclient import TestClient
 
 ARTICLES = "/api/admin/articles"
+PUBLIC_ARTICLES = "/api/public/articles"
 
 
 def create_article(client: TestClient, slug: str = "getting-started", **fields) -> dict:
@@ -44,3 +45,27 @@ def get_article(client: TestClient, article_id: str) -> dict:
     response = client.get(f"{ARTICLES}/{article_id}")
     assert response.status_code == 200, response.text
     return response.json()
+
+
+def list_snapshots(client: TestClient, article_id: str) -> list[dict]:
+    response = client.get(f"{ARTICLES}/{article_id}/snapshots")
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def restore(client: TestClient, article: dict, snapshot_id: str) -> dict:
+    """Restore with the article's current draft version. Returns the AdminArticle body."""
+    response = client.post(
+        f"{ARTICLES}/{article['id']}/snapshots/{snapshot_id}/restore",
+        json={"expectedDraftVersion": article["draftVersion"]},
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def delete_snapshot(client: TestClient, article_id: str, snapshot_id: str):
+    return client.delete(f"{ARTICLES}/{article_id}/snapshots/{snapshot_id}")
+
+
+def read_public(client: TestClient, slug: str):
+    return client.get(f"{PUBLIC_ARTICLES}/{slug}")

@@ -85,6 +85,8 @@ Every write runs in one `BEGIN IMMEDIATE` transaction that commits or fully roll
 
 **Why unpublish keeps the pointer.** Unpublish changes only the status. The pointer and `published_at` stay, so the database keeps a record of what was last live, and the last published snapshot stays protected by the same `ON DELETE RESTRICT`. The pointer, not the highest version number, is the only source of truth for what is live: public reads join on it and filter on `status = 'published'`.
 
+**The delete rule.** Any snapshot can be deleted except the one the article points to, which returns 409 "Snapshot is in use". Because unpublish keeps the pointer, this includes the last published snapshot of an unpublished article: it cannot be deleted while the article stays unpublished. The workaround is to publish again (unchanged content is fine), which moves the pointer to the new snapshot, and then delete the old one.
+
 **Schema setup, not migrations.** `backend/app/migrations/` holds a single file, `0001_initial_schema.sql`. It is applied on every startup, and every statement uses `IF NOT EXISTS`, so re-running it changes nothing. There is no migration runner yet: nothing records which files have run. To change the schema of an existing local database, delete the database file and restart. The next step would be a small runner that applies numbered files in order and tracks progress in `PRAGMA user_version`.
 
 ## Errors

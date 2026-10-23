@@ -149,7 +149,7 @@ class Snapshot(CamelModel):
     is_current: bool  # true for the snapshot the article points to
 
     @classmethod
-    def from_row(cls, snapshot: Row, current_published_version_id: str | None) -> Self:
+    def from_row(cls, snapshot: Row) -> Self:
         return cls(
             id=snapshot["id"],
             version_number=snapshot["version_number"],
@@ -157,13 +157,65 @@ class Snapshot(CamelModel):
             body=snapshot["body"],
             tags=snapshot["tags"],
             created_at=snapshot["created_at"],
-            is_current=snapshot["id"] == current_published_version_id,
+            is_current=snapshot["is_current"],
+        )
+
+
+class SnapshotListItem(CamelModel):
+    id: UUID
+    version_number: int
+    title: str
+    created_at: str
+    is_current: bool  # true for the snapshot the article points to
+
+    @classmethod
+    def from_row(cls, snapshot: Row) -> Self:
+        return cls(
+            id=snapshot["id"],
+            version_number=snapshot["version_number"],
+            title=snapshot["title"],
+            created_at=snapshot["created_at"],
+            is_current=snapshot["is_current"],
         )
 
 
 class PublishedArticle(CamelModel):
     article: AdminArticle
     snapshot: Snapshot  # the new snapshot
+
+
+# Public shapes carry only live-snapshot content plus slug and publishedAt: never draft fields.
+
+
+class PublicArticle(CamelModel):
+    slug: str
+    title: str
+    body: str
+    tags: list[str]
+    published_at: str
+
+    @classmethod
+    def from_row(cls, article: Row) -> Self:
+        return cls(
+            slug=article["slug"],
+            title=article["title"],
+            body=article["body"],
+            tags=article["tags"],
+            published_at=article["published_at"],
+        )
+
+
+class PublicArticleListItem(CamelModel):
+    slug: str
+    title: str
+    tags: list[str]
+    published_at: str
+
+    @classmethod
+    def from_row(cls, article: Row) -> Self:
+        return cls(
+            slug=article["slug"], title=article["title"], tags=article["tags"], published_at=article["published_at"]
+        )
 
 
 class HealthStatus(CamelModel):

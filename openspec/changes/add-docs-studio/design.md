@@ -188,11 +188,11 @@ How each invariant maps to the schema:
 
 *Key decision: unpublish keeps the pointer.* `unpublished` requires a non-null pointer, so unpublish is the single-column change the brief describes, and the last published snapshot stays protected by the same `ON DELETE RESTRICT`. The cost is that a writer who wants to delete that snapshot must publish again first, which moves the pointer. This is documented in the README.
 
-*Rule: the pointer is the only source of truth for what is live.* The highest-numbered snapshot is not necessarily the live one: after a restore and republish, or once snapshots are deleted, the two can differ. So no query ever infers "live" from `MAX(version_number)` or from snapshot creation time. Public reads join on `current_published_version_id` and filter on `status = 'published'`. The `isCurrent` flag in the history list compares each snapshot's id with the pointer.
+*Rule: the pointer is the only source of truth for what is live.* Today the pointer always names the highest-numbered snapshot, because only publish moves it (to the snapshot it just created) and the pointed-to snapshot cannot be deleted. But that is a consequence of the current operations, not a rule, and while an article is unpublished its highest snapshot is not live at all. So no query ever infers "live" from `MAX(version_number)` or from snapshot creation time, and later features (for example pointing an article back at an older snapshot) stay correct. Public reads join on `current_published_version_id` and filter on `status = 'published'`. The `isCurrent` flag in the history list compares each snapshot's id with the pointer.
 
 *Alternatives:*
 - Clearing the pointer on unpublish, which makes every snapshot deletable afterwards. Rejected because it loses the record of what was last live and allows deleting the last published snapshot, which the brief requires to be preserved.
-- Computing the next number as `MAX(version_number) + 1`. Rejected because it reuses a number after the highest snapshot is deleted.
+- Computing the next number as `MAX(version_number) + 1`. It gives the same result today, because the highest snapshot is always the pointed-to one and cannot be deleted. Rejected because that guarantee would then rest on the delete rule: any later change that lets the highest snapshot be deleted would silently start reusing numbers. A stored counter keeps "never reused" true on its own.
 - A separate `drafts` table. Rejected: there is exactly one draft per article, so a second table adds a join without adding a guarantee.
 
 Other storage choices:
@@ -560,18 +560,18 @@ The **live** snapshot is the one the pointer names while the status is `publishe
 | EC-10 | Status `unpublished`, pointer still on the last published snapshot: delete that snapshot | 409; snapshot kept (design limitation: the pointer is not cleared on unpublish) | 3.3 |
 | EC-11 | Restore an older snapshot | Draft equals that snapshot; history unchanged; public content unchanged | 3.3 |
 | EC-12 | Restore with an out-of-date draft version | 409; draft unchanged | 3.3 |
-| EC-13 | Delete the highest snapshot (not pointed to), then publish | New number is one above the counter; the deleted number is not reused | 3.3 |
+| EC-13 | Delete older snapshots, then publish | New number is one above the counter; deleted numbers are not reused | 3.3 |
 | EC-14 | Public read of a draft-only article | 404 | 3.3 |
 | EC-15 | Public read of an unpublished article | 404 | 3.3 |
 | EC-16 | Create with a slug that is already taken | 409; nothing created | 2.3 |
 | EC-17 | View, restore, or delete a snapshot under the wrong article | 404 | 3.3 |
-| EC-18 | Invalid request body or malformed id | Framework-default 422 | 2.3 |
+| EC-18 | Invalid request body or malformed id | Framework-default 422 | 2.3 (request body only; a malformed id is not tested, see Risks) |
 | EC-19 | Write lock not available within the busy timeout | 503 "Service temporarily unavailable"; no partial change | 3.3 |
 | EC-20 | Unpublish an article that was never published | 409 | 2.3 |
 | EC-21 | Publish again after unpublishing | New snapshot with the next number; `published_at` unchanged | 2.3 |
 | EC-22 | Publish twice with no draft changes | Two snapshots with identical content | 2.3 |
 | EC-23 | Known application error | Flat `{code, title, message?}` body | 3.3 |
-| EC-24 | Unexpected exception | Generic 500; details logged, not returned | — |
+| EC-24 | Unexpected exception | Generic 500; details logged, not returned | 2.3 (the rollback test) |
 | EC-25 | (FE) Preview unsaved Markdown | Renders in the browser; no request sent | 5.6 |
 | EC-26 | (FE) View a historical snapshot | Shows that snapshot's content, not the draft | 5.6 |
 | EC-27 | A write fails partway for any reason | Rolled back before the error response; lock released | 2.3 |
@@ -597,7 +597,7 @@ The **live** snapshot is the one the pointer names while the status is `publishe
 - [Unpublish keeps the pointer, so the last published snapshot can't be deleted while unpublished] → Documented in the README with the workaround: publish again (unchanged content is fine), which moves the pointer, then delete the old snapshot.
 - [Publish and unpublish have no concurrency counter of their own; two writers' publish and unpublish decisions can override each other] → Publish does carry `expectedDraftVersion`, so nobody can publish content they haven't seen. Unpublish only acts on a `published` article and returns 409 otherwise, so a repeated unpublish fails visibly rather than silently. A separate state counter is listed as future work.
 - [SQLite allows one writer at a time] → Fine for an internal tool with a handful of writers. Writes are short, and the busy timeout turns long waits into a 503. Postgres with row locks is the path for higher write volume.
-- [Error mapping matches SQLite error message text] → The messages are stable across SQLite versions. Neither mapping is reached by an automated test (the API checks for both cases before writing), so a change in the message text would show up as a 500 rather than a failing test.
+- [Error mapping matches SQLite error message text] → The messages are stable across SQLite versions. The slug and foreign-key mappings are not reached by an automated test (the API checks for both cases before writing), so a change in their message text would show up as a 500 rather than a failing test. The busy mapping is tested (EC-19).
 - [Every foreign-key failure maps to 409 "Snapshot is in use"] → SQLite reports every foreign-key failure with the same message, so the mapping cannot tell a protected-snapshot delete from a bug that writes a bad pointer. Such a bug would return a misleading 409 instead of a 500. This is accepted because the API never writes the pointer except in the publish transaction, right after inserting that same snapshot. A precise mapping would need the delete service to catch the error itself, instead of letting `write_txn` map it.
 - [No migration handler yet; `migrations/` holds only the initial schema] → Fine for a first version with no deployed data. Changing the schema of an existing local database means deleting the file. The next step is a runner that applies numbered files and tracks them in `PRAGMA user_version`.
 - [The app starts even when the database cannot be opened] → Deliberate, so clients get a clear 503 instead of "connection refused", and the app recovers without a restart. The failure is logged at startup and on each failed request, so it is not silent.
@@ -612,7 +612,12 @@ The **live** snapshot is the one the pointer names while the status is `publishe
 - [No dark mode] → Out of scope. Colors are all tokens on `:root`, so a dark theme would be a second set of color tokens under `@media (prefers-color-scheme: dark)`, with no component changes.
 - [Not designed for mobile] → Out of scope. The layout targets desktop and laptop screens and is not tested on phones. Because spacing, type, and layout all come from tokens and one grid, a responsive pass later means adding breakpoints in `grid.css` rather than reworking components.
 - [No accessibility work] → Out of scope. The UI is not designed or tested for keyboard, screen-reader, or contrast support;
-- [Some spec scenarios have no automated test] → The input limits and tag normalization and the generic 500 body are enforced by Pydantic and the error handler, but are not tested. Testing effort goes to the paths a writer actually uses, plus direct-SQL checks for snapshot immutability and the database refusals no endpoint can trigger. Tests for these can be added if any of them changes.
+- [Some spec scenarios have no automated test] → The input limits and tag normalization are enforced by Pydantic but not tested. The unknown-article 404 is tested on read and on the snapshot list, but not on save or publish ("Saving a missing article", "Publish a missing article"), which use the same lookup. A malformed id in the path ("Malformed id") is rejected with 422 by FastAPI's `UUID` typing before any of our code runs, so it is not tested either. Testing effort goes to the paths a writer actually uses, plus direct-SQL checks for snapshot immutability and the database refusals no endpoint can trigger. Tests for these can be added if any of them changes.
+- [No backend unit tests; the suite is integration tests only] → Every test goes through HTTP or a plain connection to a real SQLite file, because the lifecycle rules live in SQL, transactions, and constraints that a mock would skip. Two pieces of pure logic would still benefit from fast unit tests, and are the first ones to add:
+  - Input validation in `models.py`: tag normalization, a blank tag or title or body, too many tags, and the length limits, by building the request models directly. These are the spec scenarios listed as untested above.
+  - `_map_sqlite_error` in `database.py`: build each `sqlite3` error with SQLite's real message and check which `AppError` comes back, including a CHECK failure staying a 500. Only the busy mapping is reached by a test today, so this would catch a change in SQLite's message text.
+
+  Unit tests for `services/` and `repositories/` were considered and rejected for now: the services are thin glue over the repositories, every branch that matters already runs in the HTTP tests, and a mocked repository would test call order rather than behavior.
 - [The rollback test recognises the UPDATE by its SQL text] → If the statement is reworded, the test fails loudly, because the publish then succeeds and its assertions break. So it cannot pass silently.
 - [No automated frontend or end-to-end tests] → Frontend behavior, including the publish modal, the busy flag, and Markdown safety, is checked by hand. Nothing tests the full path from browser to database automatically, so a UI regression, or a mismatch between the frontend and the API, would only be caught by the manual walkthrough (task 6.2). This is accepted because the lifecycle invariants are enforced and tested in the backend, so a UI bug cannot corrupt data. Next steps, in order: Vitest tests for the composables (where the logic lives, so no page rendering is needed), then a few Playwright end-to-end tests for create, publish, restore, and unpublish.
 - [The tokens-only rule is checked by a search, not a linter] → Cheap and enough for one developer. A Stylelint config with `color-no-hex` and unit restrictions would enforce it automatically.

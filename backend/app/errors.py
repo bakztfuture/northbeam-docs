@@ -1,9 +1,4 @@
-"""Every known error, in one place, plus the handlers that render them and the generic 500.
-
-Each subclass fixes its `code` (the HTTP status) and `title`, and usually a default `message`;
-a raise site may pass a different message. Expected SQLite failures are mapped to these in
-`repositories.database.write_txn`.
-"""
+"""Every known error, in one place, plus the handlers that render them and the generic 500."""
 
 import logging
 
@@ -29,6 +24,11 @@ class AppError(Exception):
 class ArticleNotFoundError(AppError):
     code = 404
     title = "Article not found"
+
+
+class SnapshotNotFoundError(AppError):  # also for a snapshot that belongs to another article
+    code = 404
+    title = "Snapshot not found"
 
 
 class DraftConflictError(AppError):

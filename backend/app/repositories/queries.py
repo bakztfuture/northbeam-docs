@@ -1,5 +1,5 @@
 """Small helpers for writing SQL in the repository modules: fetch rows as dicts, insert from a dict,
-and run a write that reports how many rows it changed. They never open transactions."""
+delete with required conditions, and run a write that reports how many rows it changed. They never open transactions."""
 
 import sqlite3
 from datetime import UTC, datetime
@@ -25,6 +25,18 @@ def insert(conn: sqlite3.Connection, table: str, row: Row) -> None:
     columns = ", ".join(row)
     placeholders = ", ".join("?" for _ in row)
     conn.execute(f"INSERT INTO {table} ({columns}) VALUES ({placeholders})", tuple(row.values()))
+
+
+def delete(conn: sqlite3.Connection, table: str, where: Row) -> int:
+    """DELETE the rows matching every {column: value} in `where`. Returns the number of rows deleted.
+
+    `where` must not be empty, so a call can never delete a whole table. Values are always bound as
+    parameters; `table` and the column names must come from code, never from a request.
+    """
+    if not where:
+        raise ValueError("delete() needs at least one condition")
+    conditions = " AND ".join(f"{column} = ?" for column in where)
+    return conn.execute(f"DELETE FROM {table} WHERE {conditions}", tuple(where.values())).rowcount
 
 
 def execute(conn: sqlite3.Connection, sql: str, params: tuple = ()) -> int:

@@ -1,5 +1,7 @@
 import sqlite3
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
+from itertools import count
 
 import pytest
 from fastapi import FastAPI
@@ -7,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import create_app
+from app.repositories import queries
 from app.repositories.database import connect, init_db
 
 
@@ -35,3 +38,15 @@ def db(settings) -> Iterator[sqlite3.Connection]:
         yield conn
     finally:
         conn.close()
+
+
+@pytest.fixture
+def ticking_clock(monkeypatch) -> None:
+    """Every timestamp the app takes is one second after the previous one, so writes never share a time."""
+    start = datetime(2026, 1, 1, tzinfo=UTC)
+    ticks = count()
+    monkeypatch.setattr(
+        queries,
+        "utc_now",
+        lambda: (start + timedelta(seconds=next(ticks))).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+    )

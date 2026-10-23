@@ -50,24 +50,24 @@ Six groups, built layer by layer. Each group is one commit and is reviewable on 
 
 ## 3. Backend: history, public reader, integration
 
-- [ ] 3.1 History endpoints in `routes/admin.py`, with rules in `services/history.py`
+- [x] 3.1 History endpoints in `routes/admin.py`, with rules in `services/history.py`
   - `list_snapshots`: `GET .../snapshots` → `list[SnapshotListItem]`, newest first, with `isCurrent`
   - `get_snapshot`: `GET .../snapshots/{snapshotId}` → `Snapshot`
   - `restore_snapshot`: `POST .../snapshots/{snapshotId}/restore`, `RestoreSnapshotRequest` → `AdminArticle`, with compare-and-set
   - `delete_snapshot`: `DELETE .../snapshots/{snapshotId}` → 204, refused for the pointed-to snapshot
   - Response model `SnapshotListItem`
-- [ ] 3.2 Public endpoints in `routes/public.py`, with rules in `services/public.py`; the public router included in `routes/__init__.py` under `/public`
+- [x] 3.2 Public endpoints in `routes/public.py`, with rules in `services/public.py`; the public router included in `routes/__init__.py` under `/public`
   - `list_public_articles`: `GET /api/public/articles` → `list[PublicArticleListItem]`, published only, title and tags from the live snapshot, newest `publishedAt` first
   - `get_public_article`: `GET /api/public/articles/{slug}` → `PublicArticle`
   - Response models `PublicArticle` and `PublicArticleListItem`, with no draft fields
-- [ ] 3.3 History, public, and integration tests
+- [x] 3.3 History, public, and integration tests
   - History: list and view return `SnapshotListItem` and `Snapshot`; restore returns `AdminArticle`; ordering, `isCurrent`, an empty list for a draft-only article, 404 for an unknown article; restore updates only the draft (EC-11); stale restore 409 (EC-12); restore then publish creates a new snapshot (EC-32); delete a historical snapshot (EC-08), the live snapshot 409 (EC-07), the pointed-to snapshot while unpublished 409 (EC-10), a historical snapshot while unpublished 204 (EC-42), the old snapshot after a republish 204 (EC-31); numbers are never reused (EC-13); wrong-article or missing snapshot 404 (EC-17)
   - Public: snapshot content after a draft edit (EC-06); new content after a republish; an identical 404 for draft-only, unpublished, and unknown slugs (EC-09, EC-14, EC-15, EC-37); the list excludes non-published articles, shows snapshot title and tags rather than saved draft edits, shows the first publication time; the 404 for an unpublished article has the flat `{code, title}` body (EC-23); both public responses contain exactly the documented fields and no draft fields
   - Extend the immutability test to the public content: after the rejected direct updates, the public read still returns the live snapshot's original content
   - Golden path: one article from create to republish through the HTTP API, checking public visibility, history, pointer, `published_at`, `updated_at`, and `draft_version` after every step (design Decision 7)
   - Lock exhaustion returns 503 with no `Retry-After` header and leaves the draft unchanged, and a save succeeds once the lock is released (EC-19); data survives a restart (EC-29)
   - `make test` runs the whole backend suite in one command and passes
-- [ ] 3.4 README note on the delete rule: the last published snapshot cannot be deleted while unpublished; the workaround is to republish, then delete
+- [x] 3.4 README note on the delete rule: the last published snapshot cannot be deleted while unpublished; the workaround is to republish, then delete
 
 ## 4. Frontend foundations
 

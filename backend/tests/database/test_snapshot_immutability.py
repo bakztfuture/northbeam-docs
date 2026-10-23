@@ -4,13 +4,14 @@ import sqlite3
 
 import pytest
 
-from ..helpers import create_article, publish
+from ..helpers import create_article, publish, read_public
 
 
 def test_direct_update_of_live_and_historical_snapshots_is_rejected(client, db):
     historical = publish(client, create_article(client))
     live = publish(client, historical["article"])
     rows_before = db.execute("SELECT * FROM article_versions ORDER BY version_number").fetchall()
+    public_before = read_public(client, live["article"]["slug"]).json()
 
     for snapshot in (live["snapshot"], historical["snapshot"]):
         with pytest.raises(sqlite3.IntegrityError, match="Published snapshots are immutable"):
@@ -18,3 +19,4 @@ def test_direct_update_of_live_and_historical_snapshots_is_rejected(client, db):
 
     rows_after = db.execute("SELECT * FROM article_versions ORDER BY version_number").fetchall()
     assert [tuple(row) for row in rows_after] == [tuple(row) for row in rows_before]
+    assert read_public(client, live["article"]["slug"]).json() == public_before

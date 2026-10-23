@@ -39,7 +39,7 @@ Each publish SHALL give its snapshot the next number for that article, one highe
 - **THEN** its snapshots are numbered 1, 2, and 3
 
 #### Scenario: Deleted numbers are not reused
-- **WHEN** an article has snapshots 1, 2, and 3, snapshot 3 is deleted after the pointer has moved elsewhere, and the article is published again
+- **WHEN** an article has snapshots 1, 2, and 3 with 3 live, snapshots 1 and 2 are deleted, and the article is published again
 - **THEN** the new snapshot is numbered 4
 
 #### Scenario: Concurrent publishes get distinct numbers
