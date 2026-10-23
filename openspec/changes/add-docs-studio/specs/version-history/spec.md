@@ -7,7 +7,7 @@ Gives the writer a safety net over published content: inspect every snapshot an 
 ## ADDED Requirements
 
 ### Requirement: List an article's snapshots
-The writer API SHALL list every existing snapshot of an article, newest first (descending version number), with each snapshot's id, version number, title, tags, creation time, and whether it is the snapshot the article currently points to. An unknown article SHALL return 404.
+The writer API SHALL list every existing snapshot of an article, newest first (descending version number), with each snapshot's id, version number, title, creation time, and whether it is the snapshot the article currently points to. An unknown article SHALL return 404.
 
 #### Scenario: Snapshots are newest first
 - **WHEN** an article has snapshots 1, 2, and 3

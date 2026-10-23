@@ -4,16 +4,17 @@ import sqlite3
 
 import pytest
 
-from .seed import seed_published_article
+from ..helpers import create_article, publish
 
 
-def test_direct_update_of_live_and_historical_snapshots_is_rejected(db):
-    _, historical, live = seed_published_article(db)
+def test_direct_update_of_live_and_historical_snapshots_is_rejected(client, db):
+    historical = publish(client, create_article(client))
+    live = publish(client, historical["article"])
     rows_before = db.execute("SELECT * FROM article_versions ORDER BY version_number").fetchall()
 
-    for snapshot_id in (live, historical):
+    for snapshot in (live["snapshot"], historical["snapshot"]):
         with pytest.raises(sqlite3.IntegrityError, match="Published snapshots are immutable"):
-            db.execute("UPDATE article_versions SET body = 'changed' WHERE id = ?", (snapshot_id,))
+            db.execute("UPDATE article_versions SET body = 'changed' WHERE id = ?", (snapshot["id"],))
 
     rows_after = db.execute("SELECT * FROM article_versions ORDER BY version_number").fetchall()
     assert [tuple(row) for row in rows_after] == [tuple(row) for row in rows_before]

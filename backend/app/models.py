@@ -2,15 +2,20 @@
 
 - Requests (input): bodies the API accepts. They validate and normalize input. Names end in `Request`.
 - Responses (output): bodies the API returns. Routes set them as `response_model`, so only the
-  listed fields are ever sent. Names are the thing returned (`AdminArticle`, `Snapshot`);
+  listed fields are ever sent. Names are the thing returned (`AdminArticle`, `Snapshot`). Each one
+  that is built from database rows has a `from_row` that maps the columns to its fields. Fields are
+  plain types: the request rules checked the data on the way in, and are not re-run on the way out.
 
 JSON is camelCase; Python attributes are snake_case.
 """
 
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Self
+from uuid import UUID
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints
 from pydantic.alias_generators import to_camel
+
+from app.repositories.queries import Row
 
 
 class CamelModel(BaseModel):
@@ -80,6 +85,85 @@ class RestoreSnapshotRequest(CamelModel):
 
 
 # --- Responses (output) ---
+
+ArticleStatus = Literal["draft", "published", "unpublished"]
+
+
+class Draft(CamelModel):
+    title: str
+    body: str
+    tags: list[str]
+
+
+class AdminArticle(CamelModel):
+    id: UUID
+    slug: str
+    status: ArticleStatus
+    draft: Draft
+    draft_version: int
+    current_published_version_id: UUID | None  # null until the first publish
+    published_at: str | None  # null until the first publish
+    created_at: str
+    updated_at: str
+
+    @classmethod
+    def from_row(cls, article: Row) -> Self:
+        return cls(
+            id=article["id"],
+            slug=article["slug"],
+            status=article["status"],
+            draft=Draft(title=article["draft_title"], body=article["draft_body"], tags=article["draft_tags"]),
+            draft_version=article["draft_version"],
+            current_published_version_id=article["current_published_version_id"],
+            published_at=article["published_at"],
+            created_at=article["created_at"],
+            updated_at=article["updated_at"],
+        )
+
+
+class ArticleListItem(CamelModel):
+    id: UUID
+    slug: str
+    title: str  # the draft title
+    status: ArticleStatus
+    updated_at: str
+
+    @classmethod
+    def from_row(cls, article: Row) -> Self:
+        return cls(
+            id=article["id"],
+            slug=article["slug"],
+            title=article["draft_title"],
+            status=article["status"],
+            updated_at=article["updated_at"],
+        )
+
+
+class Snapshot(CamelModel):
+    id: UUID
+    version_number: int
+    title: str
+    body: str
+    tags: list[str]
+    created_at: str
+    is_current: bool  # true for the snapshot the article points to
+
+    @classmethod
+    def from_row(cls, snapshot: Row, current_published_version_id: str | None) -> Self:
+        return cls(
+            id=snapshot["id"],
+            version_number=snapshot["version_number"],
+            title=snapshot["title"],
+            body=snapshot["body"],
+            tags=snapshot["tags"],
+            created_at=snapshot["created_at"],
+            is_current=snapshot["id"] == current_published_version_id,
+        )
+
+
+class PublishedArticle(CamelModel):
+    article: AdminArticle
+    snapshot: Snapshot  # the new snapshot
 
 
 class HealthStatus(CamelModel):

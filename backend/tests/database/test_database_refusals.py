@@ -4,31 +4,34 @@ import sqlite3
 
 import pytest
 
-from .seed import insert_article, point_at, seed_published_article
+from ..helpers import create_article, publish
 
 
-def test_published_article_without_a_pointer_is_rejected(db):
-    article_id = insert_article(db)
+def test_published_article_without_a_pointer_is_rejected(client, db):
+    article = create_article(client)
 
     with pytest.raises(sqlite3.IntegrityError, match="CHECK constraint failed"):
         db.execute(
             "UPDATE articles SET status = 'published', published_at = '2026-01-01T00:00:00.000Z' WHERE id = ?",
-            (article_id,),
+            (article["id"],),
         )
 
 
-def test_pointer_to_another_articles_snapshot_is_rejected(db):  # EC-28
-    _, _, other_articles_snapshot = seed_published_article(db, slug="other")
-    article_id = insert_article(db, slug="mine")
+def test_pointer_to_another_articles_snapshot_is_rejected(client, db):  # EC-28
+    other = publish(client, create_article(client, slug="other"))
+    mine = publish(client, create_article(client, slug="mine"))
 
     with pytest.raises(sqlite3.IntegrityError, match="FOREIGN KEY constraint failed"):
-        point_at(db, article_id, other_articles_snapshot, 1)
+        db.execute(
+            "UPDATE articles SET current_published_version_id = ? WHERE id = ?",
+            (other["snapshot"]["id"], mine["article"]["id"]),
+        )
 
 
-def test_deleting_the_pointed_to_snapshot_is_rejected(db):
-    _, _, live = seed_published_article(db)
+def test_deleting_the_pointed_to_snapshot_is_rejected(client, db):
+    live = publish(client, create_article(client))["snapshot"]
 
     with pytest.raises(sqlite3.IntegrityError, match="FOREIGN KEY constraint failed"):
-        db.execute("DELETE FROM article_versions WHERE id = ?", (live,))
+        db.execute("DELETE FROM article_versions WHERE id = ?", (live["id"],))
 
-    assert db.execute("SELECT COUNT(*) FROM article_versions WHERE id = ?", (live,)).fetchone()[0] == 1
+    assert db.execute("SELECT COUNT(*) FROM article_versions WHERE id = ?", (live["id"],)).fetchone()[0] == 1

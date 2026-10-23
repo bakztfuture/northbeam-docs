@@ -36,11 +36,13 @@ backend/
   app/
     main.py              create_app(settings): FastAPI app, lifespan, routers, error handlers
     config.py            Settings: DB path, busy timeout (env-configurable)
-    errors.py            AppError, handlers, sqlite error mapping
+    errors.py            AppError and one subclass per known error, handlers
     models.py            Pydantic request/response models
     repositories/
       database.py        core DB wrappers: connect(), get_db dependency,
-                         write_txn(), init_db()
+                         write_txn() (maps expected sqlite errors), init_db()
+      queries.py         query helpers: fetch_one(), fetch_all(), insert(),
+                         execute() (returns the row count)
       articles.py        SQL operations on articles and article_versions
     migrations/
       0001_initial_schema.sql   tables, constraints, trigger
@@ -75,6 +77,8 @@ services/      business rules: version checks, status checks, 404/409
    v
 repositories/  SQL only.
                - database.py: connections, transactions, schema setup.
+               - queries.py: small helpers the query modules use to run SQL;
+                 values are always bound as parameters.
                - articles.py: one function per query (e.g. insert_version,
                  update_draft_if_version, set_published, delete_version).
                Query functions in articles.py take a connection and return
@@ -82,7 +86,7 @@ repositories/  SQL only.
                HTTP errors.
 ```
 
-`get_db` in `database.py` is the one exception: it is the FastAPI dependency at the edge of the repositories layer, so it is where "the database cannot be opened" becomes `AppError(503, "Database unavailable")` (Decision 3).
+`database.py` is the one place in the repositories layer that raises application errors. `get_db` raises `DatabaseUnavailableError` when the database cannot be opened (Decision 3), and `write_txn` turns expected SQLite failures into their `AppError` subclasses (Decision 6).
 
 Keeping transactions in services, not repositories, means one service call can combine several repository functions inside one `write_txn`. Publish is the main case: it needs an INSERT and an UPDATE that must succeed or fail together.
 
@@ -212,7 +216,8 @@ All of this lives in `repositories/database.py`.
 with write_txn(conn):        # BEGIN IMMEDIATE  (take the write lock now)
     ... reads + writes ...   # all statements see a stable state
                              # on success: COMMIT
-                             # on any exception: ROLLBACK, then re-raise
+                             # on any exception: ROLLBACK, then raise the
+                             # mapped AppError (Decision 6) or re-raise
 ```
 
   Every write operation (create, save, publish, unpublish, restore, delete) runs inside exactly one `write_txn`. Reads run without a transaction, since each read endpoint's queries do not need a shared snapshot of the data.
@@ -227,7 +232,7 @@ This is deliberately **not** a migration handler: nothing records which files ha
 **Database unavailable.** If the database cannot be opened, every endpoint must fail the same clear way instead of each one failing differently:
 
 - **At startup**, FastAPI's `lifespan` handler calls `init_db()`. If that fails, for example because the path is unreadable or the file is not a database, the error is logged and `app.state.db_ready` stays `False`. The app still starts, so clients get a clear error response rather than "connection refused".
-- **On every request**, `get_db` is the single gate. If `db_ready` is `False`, it first retries `init_db()`. Then it opens the connection. If either step raises `sqlite3.Error` or `OSError`, it raises `AppError(503, "Database unavailable", "The database could not be opened.")`. The real error and the path go to the log, never into the response.
+- **On every request**, `get_db` is the single gate. If `db_ready` is `False`, it first retries `init_db()`. Then it opens the connection. If either step raises `sqlite3.Error` or `OSError`, it raises `DatabaseUnavailableError`. The real error and the path go to the log, never into the response.
 - **Every router depends on `get_db`**, including health. So all endpoints are blocked uniformly by FastAPI's dependency system, and they recover on the next request once the database can be opened again, with no restart.
 - **This is distinct from the "busy" 503** (Decision 6). "Database unavailable" means the database could not be opened at all; "Service temporarily unavailable" means a write timed out waiting for the lock.
 
@@ -349,16 +354,27 @@ Notes:
 
 FastAPI's default 422 handler is left unchanged.
 
-**Known errors.** `AppError(code, title, message=None)` is the one application exception class. A single handler renders it as `{"code", "title", "message"?}`, with `message` omitted when it is `None`. Services raise it for 404 and 409 decisions, and `get_db` raises it for "Database unavailable".
+**Known errors.** `AppError` is the base class. Each known error is a subclass that fixes its `code` (the HTTP status), its `title`, and usually a default `message`. A raise site may pass a different message. All of them live in `errors.py`, so each title is written once. A single handler renders any of them as `{"code", "title", "message"?}`, leaving out `message` when it is `None`.
 
-**SQLite error mapping** is done in one function, called by the generic exception handler, so routes have no try/except blocks:
+| Subclass | Code | Title | Raised by |
+|---|---|---|---|
+| `ArticleNotFoundError` | 404 | "Article not found" | services, for an unknown article id or public slug |
+| `SnapshotNotFoundError` | 404 | "Snapshot not found" | history services, for a missing snapshot or one of another article |
+| `DraftConflictError` | 409 | "Draft conflict" | save, publish, and restore, for a stale draft version |
+| `SlugTakenError` | 409 | "Slug already exists" | create, and the SQLite mapping |
+| `ArticleNotPublishedError` | 409 | "Article is not published" | unpublish |
+| `SnapshotInUseError` | 409 | "Snapshot is in use" | snapshot delete, and the SQLite mapping |
+| `DatabaseBusyError` | 503 | "Service temporarily unavailable" | the SQLite mapping |
+| `DatabaseUnavailableError` | 503 | "Database unavailable" | `get_db` |
 
-| sqlite3 error | Message starts with | Response |
+**SQLite error mapping** is done in `write_txn`, after the rollback. Every write runs inside it, and every mapped failure can only come from a write. Routes and services have no try/except blocks. An unmatched SQLite error is re-raised and becomes the generic 500:
+
+| sqlite3 error | Message starts with | Raised as |
 |---|---|---|
-| `IntegrityError` | `UNIQUE constraint failed: articles.slug` | 409 "Slug already exists" |
-| `IntegrityError` | `FOREIGN KEY constraint failed` (any statement) | 409 "Snapshot is in use" |
-| `OperationalError` | `database is locked` or `database is busy` | 503 "Service temporarily unavailable", no `Retry-After` |
-| anything else, including CHECK and trigger aborts | | 500 |
+| `IntegrityError` | `UNIQUE constraint failed: articles.slug` | `SlugTakenError` (409) |
+| `IntegrityError` | `FOREIGN KEY constraint failed` (any statement) | `SnapshotInUseError` (409) |
+| `OperationalError` | `database is locked` or `database is busy` | `DatabaseBusyError` (503), no `Retry-After` |
+| anything else, including CHECK and trigger aborts | | re-raised unchanged: 500 |
 
 CHECK and trigger failures stay 500 on purpose. The API never attempts those writes, so reaching one means there is a bug, and returning 409 would hide it.
 
@@ -368,7 +384,7 @@ Every foreign-key failure maps to 409 "Snapshot is in use", whichever statement 
 
 **Rollback before the response.** `write_txn` always rolls back before an exception leaves it, so by the time any handler runs, the transaction is already closed and the lock released.
 
-*Alternative considered:* an exception subclass per error type (`NotFound`, `Conflict`). Rejected because one class with a code is enough for this size of API.
+*Alternative considered:* one `AppError(code, title, message)` class built at each raise site. Rejected because the same titles and messages were repeated in several files.
 
 ### 7. Testing approach
 
@@ -515,7 +531,7 @@ The **live** snapshot is the one the pointer names while the status is `publishe
 
 | # | Invariant | Spec requirement | Enforced by | Tests (tasks) |
 |---|---|---|---|---|
-| INV-1 | A snapshot never changes once created, live or not. Published content changes only by editing the draft and publishing a new snapshot. | article-publishing: Snapshots are immutable | `BEFORE UPDATE` trigger; no snapshot-edit endpoint; publish copies the saved draft | 1.4, 2.3 |
+| INV-1 | A snapshot never changes once created, live or not. Published content changes only by editing the draft and publishing a new snapshot. | article-publishing: Snapshots are immutable | `BEFORE UPDATE` trigger; no snapshot-edit endpoint; publish copies the saved draft | 1.4, 2.3, 3.3 |
 | INV-2 | Readers only ever see the live snapshot of a `published` article. They never see a draft, and see nothing at all for draft-only or unpublished articles. | public-reader: List published articles; Read a published article; Hide everything that is not published | Public queries join on the pointer, filter on `published`, and never select draft columns | 3.3 |
 | INV-3 | Status, pointer, and `published_at` always agree: a draft has neither; a published or unpublished article has both, and the pointer names one of its own snapshots. This holds after a crash and under concurrent requests. | article-publishing: Publication state is always consistent | CHECK constraint; composite FK; `BEGIN IMMEDIATE`; journal + `synchronous = FULL` (crash case rests on SQLite's guarantee, Decision 3) | 1.4, 2.3 |
 | INV-4 | A publish is all or nothing: snapshot, counter, status, pointer, and `published_at` change together or not at all. | article-publishing: Publishing is atomic | One `write_txn` | 2.3 |
@@ -536,7 +552,7 @@ The **live** snapshot is the one the pointer names while the status is `publishe
 | EC-02 | Publish with an out-of-date draft version | 409; no snapshot created | 2.3 |
 | EC-03 | Publish fails after the snapshot is written | Full rollback: no snapshot; status, pointer, `published_at`, counter unchanged | 2.3 |
 | EC-04 | Two publishes of the same article at once | Both succeed one after the other, with consecutive numbers | 2.3 |
-| EC-05 | Direct SQL update of a snapshot, live or historical | Rejected by the database; snapshot unchanged | 1.4, 2.3 |
+| EC-05 | Direct SQL update of a snapshot, live or historical | Rejected by the database; snapshot unchanged | 1.4, 2.3, 3.3 |
 | EC-06 | Draft edited and saved after publishing | Public content unchanged | 3.3 |
 | EC-07 | Delete the live snapshot | 409; snapshot kept | 3.3 |
 | EC-08 | Delete a historical snapshot | 204; only that snapshot removed | 3.3 |
@@ -582,7 +598,7 @@ The **live** snapshot is the one the pointer names while the status is `publishe
 - [Publish and unpublish have no concurrency counter of their own; two writers' publish and unpublish decisions can override each other] → Publish does carry `expectedDraftVersion`, so nobody can publish content they haven't seen. Unpublish only acts on a `published` article and returns 409 otherwise, so a repeated unpublish fails visibly rather than silently. A separate state counter is listed as future work.
 - [SQLite allows one writer at a time] → Fine for an internal tool with a handful of writers. Writes are short, and the busy timeout turns long waits into a 503. Postgres with row locks is the path for higher write volume.
 - [Error mapping matches SQLite error message text] → The messages are stable across SQLite versions. Neither mapping is reached by an automated test (the API checks for both cases before writing), so a change in the message text would show up as a 500 rather than a failing test.
-- [Every foreign-key failure maps to 409 "Snapshot is in use"] → SQLite reports every foreign-key failure with the same message, so the mapping cannot tell a protected-snapshot delete from a bug that writes a bad pointer. Such a bug would return a misleading 409 instead of a 500. This is accepted because the API never writes the pointer except in the publish transaction, right after inserting that same snapshot. A precise mapping would need the delete service to catch the error itself, which brings back the try/except blocks Decision 6 avoids.
+- [Every foreign-key failure maps to 409 "Snapshot is in use"] → SQLite reports every foreign-key failure with the same message, so the mapping cannot tell a protected-snapshot delete from a bug that writes a bad pointer. Such a bug would return a misleading 409 instead of a 500. This is accepted because the API never writes the pointer except in the publish transaction, right after inserting that same snapshot. A precise mapping would need the delete service to catch the error itself, instead of letting `write_txn` map it.
 - [No migration handler yet; `migrations/` holds only the initial schema] → Fine for a first version with no deployed data. Changing the schema of an existing local database means deleting the file. The next step is a runner that applies numbered files and tracks them in `PRAGMA user_version`.
 - [The app starts even when the database cannot be opened] → Deliberate, so clients get a clear 503 instead of "connection refused", and the app recovers without a restart. The failure is logged at startup and on each failed request, so it is not silent.
 - [Publishing unchanged content creates duplicate snapshots] → Intended for now. Idempotent publish is a known stretch goal and is out of scope.

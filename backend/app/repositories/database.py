@@ -9,7 +9,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 
 from app.config import Settings
-from app.errors import AppError
+from app.errors import AppError, DatabaseBusyError, DatabaseUnavailableError, SlugTakenError, SnapshotInUseError
 
 logger = logging.getLogger(__name__)
 
@@ -36,17 +36,38 @@ def connect(settings: Settings) -> sqlite3.Connection:
     return conn
 
 
+def _map_sqlite_error(exc: sqlite3.Error) -> AppError | None:
+    """The expected database failures, as AppErrors; None means it is a bug (500)."""
+    text = str(exc)
+    if isinstance(exc, sqlite3.IntegrityError):
+        if text.startswith("UNIQUE constraint failed: articles.slug"):
+            return SlugTakenError()
+        if text.startswith("FOREIGN KEY constraint failed"):
+            return SnapshotInUseError()
+    if isinstance(exc, sqlite3.OperationalError) and text.startswith(("database is locked", "database is busy")):
+        return DatabaseBusyError()
+    # CHECK and trigger aborts land here on purpose: the API never attempts those
+    # writes, so reaching one means there is a bug, and a 409 would hide it.
+    return None
+
+
 @contextmanager
 def write_txn(conn: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
-    """The one place write transactions begin: BEGIN IMMEDIATE, then COMMIT, or ROLLBACK and re-raise."""
-    conn.execute("BEGIN IMMEDIATE")
+    """The one place write transactions begin: BEGIN IMMEDIATE, then COMMIT.
+
+    On any exception: ROLLBACK, then raise the matching AppError for an expected
+    SQLite failure, or re-raise anything else unchanged.
+    """
     try:
+        conn.execute("BEGIN IMMEDIATE")  # inside the try: this is where a busy lock fails
         yield conn
         conn.execute("COMMIT")
-    except BaseException:
+    except BaseException as exc:
         # SQLite may already have rolled back on its own (for example after SQLITE_FULL).
         if conn.in_transaction:
             conn.execute("ROLLBACK")
+        if isinstance(exc, sqlite3.Error) and (mapped := _map_sqlite_error(exc)):
+            raise mapped from exc
         raise
 
 
@@ -80,20 +101,16 @@ def try_init_db(app: FastAPI) -> bool:
     return app.state.db_ready
 
 
-def _database_unavailable() -> AppError:
-    return AppError(503, "Database unavailable", "The database could not be opened.")
-
-
 def get_db(request: Request) -> Iterator[sqlite3.Connection]:
     """FastAPI dependency: one connection per request, and the single 'database unavailable' gate."""
     app = request.app
     if not app.state.db_ready and not try_init_db(app):
-        raise _database_unavailable()
+        raise DatabaseUnavailableError()
     try:
         conn = connect(app.state.settings)
     except (sqlite3.Error, OSError):
         logger.exception("Could not open the database at %s", app.state.settings.db_path)
-        raise _database_unavailable() from None
+        raise DatabaseUnavailableError() from None
     try:
         yield conn
     finally:
