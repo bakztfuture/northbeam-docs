@@ -14,13 +14,13 @@ An internal docs studio: writers edit a single draft per article, publish it as 
 
 Installing, testing, and running the app are each a single command, run from the repository root.
 
-**Install everything** (backend virtualenv and dependencies, plus the frontend's npm packages):
+**Install everything** (backend virtualenv and dependencies, the frontend's npm packages, and the headless browser the E2E checks run in):
 
 ```bash
 make setup
 ```
 
-**Run all tests:**
+**Run all tests** (the backend suite, then the frontend E2E checks against a mocked API:
 
 ```bash
 make test
@@ -114,4 +114,6 @@ CHECK and trigger violations return 500 on purpose: the API never attempts those
 
 ## A trade-off made under time pressure
 
-The frontend has no automated tests: no unit tests and no end-to-end tests. With limited time, I spent the testing effort where a bug would do the most damage, the content lifecycle. The backend suite covers every invariant and edge case against a real SQLite file: snapshot immutability, the atomic publish with a forced rollback, stale-draft conflicts, the protected snapshot, and concurrent publishes. Because those rules are enforced in the database and API, a UI bug can show the wrong thing or block an action, but it can't publish a draft by accident or corrupt a snapshot. So the frontend is checked by hand instead: the publish confirmation, disabling Publish while there are unsaved edits, the busy flag, conflict handling, and Markdown safety. The cost is that a UI regression, or a mismatch between what the frontend sends and what the API expects, only shows up if someone walks through the app. With more time, I'd start with Vitest unit tests for the composables (`useArticleEditor` above all), since that's where the frontend logic lives: dirty tracking, save routing, the busy flag, and what a 409 or 503 means for the page. Those tests need no rendering and run in milliseconds. Then I'd add a few Playwright end-to-end tests against the real backend for the paths that matter most: create, save, publish (confirming and cancelling), restore, unpublish, and two tabs conflicting on the same draft. That way the full path from browser to database is checked on every change, not just during a manual walkthrough.
+The frontend has only minimal automated tests: two Playwright end-to-end checks that validate the frontend boundary along the major flow, against a mocked API. There are no unit tests yet, for example on the composables. With limited time, I spent the testing effort where a bug would do the most damage, the content lifecycle. The backend suite covers every invariant and edge case against a real SQLite file: snapshot immutability, the atomic publish with a forced rollback, stale-draft conflicts, the protected snapshot, and concurrent publishes. Because those rules are enforced in the database and API, a UI bug can show the wrong thing or block an action, but it can't publish a draft by accident or corrupt a snapshot. So beyond those two checks, the frontend is checked by hand: the publish confirmation, disabling Publish while there are unsaved edits, the busy flag, conflict handling, and Markdown safety. The cost is that a UI regression, or a mismatch between what the frontend sends and what the API expects, only shows up if someone walks through the app. With more time, I'd start with Vitest unit tests for the composables (`useArticleEditor` above all), since that's where the frontend logic lives: dirty tracking, save routing, the busy flag, and what a 409 or 503 means for the page. Those tests need no rendering and run in milliseconds. Then I'd add a few Playwright end-to-end tests against the real backend for the paths that matter most: create, save, publish (confirming and cancelling), restore, unpublish, and two tabs conflicting on the same draft. That way the full path from browser to database is checked on every change, not just during a manual walkthrough.
+
+For the same reason, the editor's composables (`frontend/src/composables/article-editor/`) had a lighter code review than the backend; they were tested by hand and are the first place I'd add the unit tests above.

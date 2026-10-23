@@ -66,7 +66,7 @@ Six groups, built layer by layer. Each group is one commit and is reviewable on 
   - Extend the immutability test to the public content: after the rejected direct updates, the public read still returns the live snapshot's original content
   - Golden path: one article from create to republish through the HTTP API, checking public visibility, history, pointer, `published_at`, `updated_at`, and `draft_version` after every step (design Decision 7)
   - Lock exhaustion returns 503 with no `Retry-After` header and leaves the draft unchanged, and a save succeeds once the lock is released (EC-19); data survives a restart (EC-29)
-  - `make test` runs the whole backend suite in one command and passes
+  - `make test` runs the whole backend suite in one command and passes (it also runs the frontend E2E checks from task 5.7)
 - [x] 3.4 README note on the delete rule: the last published snapshot cannot be deleted while unpublished; the workaround is to republish, then delete
 
 ## 4. Frontend foundations
@@ -78,18 +78,19 @@ Six groups, built layer by layer. Each group is one commit and is reviewable on 
 
 ## 5. Frontend: writer and public UI
 
-- [ ] 5.1 `useArticleList` and the admin article list view (title, slug, status, "New article")
-- [ ] 5.2 `useArticleEditor` (`saved`, `form`, `isDirty`, the snapshot list, conflict and error state, the page-level busy flag, the pending `confirmation`, and every action, calling only `src/services/`), `ArticleEditorView`, which serves both `/admin/new` and `/admin/articles/:id`, and `ArticleForm` with a live preview. Save calls `POST` on the first save, then `PATCH`
-- [ ] 5.3 **Highlighted:** the publish flow
+- [x] 5.1 `useArticleList` and the admin article list view (title, slug, status, "New article")
+- [x] 5.2 `useArticleEditor` (`saved`, `form`, `isDirty`, the snapshot list, conflict and error state, the page-level busy flag, the pending `confirmation`, and every action, calling only `src/services/`), `ArticleEditorView`, which serves both `/admin/new` and `/admin/articles/:id`, and `ArticleEditorForm` (fields in one card, Body and Preview tabs, no slug field on the new form, the slug shown read-only once the article exists), with the random slug from `lib/slug.ts` and browser validation of required fields and limits from `lib/fieldValidation.ts`. Save calls `POST` on the first save, then `PATCH`
+- [x] 5.3 **Highlighted:** the publish flow
   - Publish is disabled while `isDirty`, with "Save your changes before publishing"
   - Publish opens `ConfirmModal`, and only Confirm sends the request; Unpublish appears only when `published`
   - The busy flag is set when a request starts (after confirmation) and cleared in `finally`; while busy, every action control is disabled and the active one shows progress
-- [ ] 5.4 The 409 conflict banner with "Reload latest" behind the modal, and `VersionHistoryPanel` (view, restore with confirmation when there are unsaved edits, delete with confirmation, Delete unavailable on the pointed-to snapshot); after a publish or a delete, the editor reloads the snapshot list so `isCurrent` is never stale
-- [ ] 5.5 `usePublicArticles` and the public list and article pages, with a "not found" page
-- [ ] 5.6 Check:
-  - no view or component imports from `src/services/`
+- [x] 5.4 The 409 conflict banner with "Reload latest" (no confirmation; it reloads straight away), and `ArticleEditorHistory` (view, restore and delete without confirmation, Delete unavailable on the pointed-to snapshot, showing the 10 most recent snapshots with the total when there are more); after a delete, the editor reloads the snapshot list so `isCurrent` is never stale; a successful publish opens the article's public page and a successful unpublish opens the public list
+- [x] 5.5 `usePublicArticles` and the public list and article pages, with a "not found" page
+- [x] 5.6 Check:
+  - no view or component calls the API: nothing in `src/views/` or `src/components/` imports a function from `src/services/` (type-only imports from `services/types.ts` are allowed)
   - a search of `src/components/` and `src/views/` finds no hex colors, `rgb(`, `px` or `rem` literals, or `--` definitions
-  - in the browser, every (FE) scenario in the specs works, including a first save switching to the editor, an abandoned new form storing nothing, a duplicate slug keeping the typed content, a conflict between two tabs, preview without requests (EC-25), snapshot view (EC-26), Publish disabled while dirty (EC-39), Restore unavailable during a save (EC-40), and cancelling the publish modal (EC-41)
+  - in the browser, every (FE) scenario in the specs works, including a first save switching to the editor, an abandoned new form storing nothing, a duplicate slug keeping the typed content, a conflict between two tabs, preview without requests (EC-25), snapshot view (EC-26), Publish disabled while dirty (EC-39), Restore unavailable during a save (EC-40), cancelling the publish modal (EC-41), an article with more than 10 snapshots, and invalid input (an empty or spaces-only title or body, too many or too-long tags) sending nothing
+- [x] 5.7 Minimal frontend E2E checks: Playwright with `page.route()` answering `/api/**` from an in-memory fake (no backend, no database), covering the happy path (create, save twice, publish, public page, unpublish, not found) and the save conflict (409 banner, Reload latest); run by `make test`, or alone with `make e2e`; `make setup` installs the headless browser
 
 ## 6. README and final check
 

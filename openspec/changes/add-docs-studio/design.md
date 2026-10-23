@@ -24,7 +24,7 @@ Fixed constraints:
 - Migration handling. `app/migrations/` exists and holds the initial schema file, which is applied on startup, but there is no migration runner yet (Decision 3).
 - An ORM or query builder. The SQL is small and the constraints are the point, so it is written directly.
 - Frontend state-management libraries, component libraries, or styling frameworks. Styling is plain CSS (native custom properties and native nesting) with our own tokens; no preprocessor.
-- Automated frontend tests, for now. The project's focus is the content lifecycle, so testing effort goes into thorough backend tests of every invariant and edge case instead. Scenarios marked (FE) in the specs are checked by hand in the browser.
+- Frontend unit tests, and end-to-end tests against the real backend, for now. The project's focus is the content lifecycle, so testing effort goes into thorough backend tests of every invariant and edge case instead. Two minimal Playwright checks run the frontend against a mocked API (Decision 7); the other (FE) scenarios are checked by hand in the browser.
 - Running behind multiple worker processes. SQLite serializes writes; the design is correct with several workers but is only tested with one.
 
 ## Decisions
@@ -58,8 +58,15 @@ frontend/
                          useArticleEditor, usePublicArticles
     views/               pages: connect a composable to components
     components/          presentational: props in, events out
-                         (ArticleForm, MarkdownView, VersionHistoryPanel,
-                         ConfirmModal, StatusBadge, ErrorBanner)
+                         (ConfirmModal, ErrorBanner, MarkdownView,
+                         StatusBadge, ...)
+      layout/            the app frame: AppNavbar, AppFooter, AppLogo,
+                         AppBreadcrumb
+      shared/            ModalShell, the frame other components build on
+      icons/             one SFC per icon (IconGlobeSvg, IconSaveSvg, ...)
+      illustrations/     the empty-state drawings
+      article-editor/    the editor page's own pieces: ArticleEditorForm,
+                         ArticleEditorHistory, ...
     styles/              tokens.css, grid.css, typography.css, main.css
     lib/markdown.ts      the one shared renderer
   package.json
@@ -90,7 +97,7 @@ repositories/  SQL only.
 
 Keeping transactions in services, not repositories, means one service call can combine several repository functions inside one `write_txn`. Publish is the main case: it needs an INSERT and an UPDATE that must succeed or fail together.
 
-`make setup` creates `backend/.venv` with `python3 -m venv` and installs the backend, then runs `npm install` in `frontend/`. `make test` runs the backend test suite (`pytest`), which is the single command for the lifecycle tests. `make dev` starts Uvicorn on port 8000 and Vite on port 5173 with a dev proxy from `/api` to the backend.
+`make setup` creates `backend/.venv` with `python3 -m venv` and installs the backend, then runs `npm install` in `frontend/`. It also runs `npx playwright install --only-shell chromium`, the headless browser the frontend E2E checks need (no full Chrome). `make test` is the single command for every test: the backend suite (`pytest`), then the frontend E2E checks; `make e2e` runs the E2E checks alone. `make dev` starts Uvicorn on port 8000 and Vite on port 5173 with a dev proxy from `/api` to the backend.
 
 `make lint` checks both apps without changing anything and fails on any problem: Ruff (lint and format check) for the backend, ESLint and a Prettier check for the frontend. `make format` applies the same tools' fixes. Ruff is one fast tool for both jobs in Python. ESLint with `eslint-plugin-vue` and Prettier are the standard pair for Vue 3 single-file components, and `@vue/eslint-config-prettier` keeps them from disagreeing.
 
@@ -421,7 +428,7 @@ pytest; each test gets its own SQLite file in `tmp_path`. A fixture builds the a
 
   The individual tests cover each rule in isolation; this one proves they hold together in the order a writer would actually use them.
 - **Restart durability:** create and publish through one app instance, dispose of it, build a new instance on the same file, and read everything back.
-- **Frontend:** no automated tests for now. The lifecycle rules are what this project is judged on, and they are all enforced and tested in the backend, so that is where the testing effort goes. Scenarios marked (FE) in the specs are checked by hand in the browser, as each frontend task's verification step and again in the final walkthrough (task 6.2).
+- **Frontend:** in the interest of time, two minimal Playwright end-to-end checks validate the frontend boundary along the major flow: (1) create, save twice, publish, see the public page, unpublish, then get the not-found page; (2) a save that returns 409 shows the conflict banner, and Reload latest replaces the form without a dialog. They run as the second half of `make test`. `page.route()` answers every `/api/**` request from an in-memory fake inside the test, typed with `services/types.ts`, so no backend or database runs. There are no frontend unit tests yet, for example on the composables. The lifecycle rules are enforced and tested in the backend, so that is where the testing effort goes; the other (FE) scenarios are checked by hand in the browser, as each frontend task's verification step and again in the final walkthrough (task 6.2).
 
 *Alternatives for the rollback test:*
 - A temporary trigger that aborts the UPDATE: works, but adds test-only database setup.
@@ -461,6 +468,7 @@ The dependency override was chosen because production code stays unchanged and t
   ```
 
   The rule of thumb: if logic would need a test, it belongs in a composable. Views and components only render and forward events.
+
 - **Composables.**
 
   | Composable | Owns |
@@ -469,7 +477,11 @@ The dependency override was chosen because production code stays unchanged and t
   | `useArticleEditor(id?)` | Everything on the editor page: `saved`, `form`, `isDirty`, the snapshot list, the conflict state, the busy flag (below), the pending confirmation (below), and every action: save (create or update), publish, unpublish, restore, delete, reload latest |
   | `usePublicArticles` | The public list and the public article by slug |
 
-  Restore and delete live in `useArticleEditor`, not in a separate history composable, so they share the editor's busy flag and refresh the same state. After a publish or a delete, it reloads the snapshot list, so the "current" marker never points at the wrong snapshot.
+  `useArticleEditor` lives in `composables/article-editor/`, beside two helpers it uses: `useConfirmation.ts`, which holds the pending confirmation and knows nothing about articles, and `form.ts`, which holds the form fields' type, the starter content for a new article, and the comparison behind `isDirty`. Every action stays in `useArticleEditor` itself.
+
+  Restore and delete live in `useArticleEditor`, not in a separate history composable, so they share the editor's busy flag and refresh the same state. After a delete, it reloads the snapshot list, so the "current" marker never points at the wrong snapshot.
+- **After publish and unpublish.** A successful publish navigates to the article's public page (`/articles/:slug`), so the writer sees exactly what readers now see; a successful unpublish navigates to the public list, where the article is gone. The editor is left behind, so it does not refresh its own state; opening it again loads the article and its history fresh. A failed publish or unpublish keeps the writer in the editor with the conflict or error shown.
+- **History limit.** The history panel shows the 10 most recent snapshots. The API still returns every snapshot; `useArticleEditor` keeps the full list and passes the newest 10 to the panel, with the total so the panel can say "Showing the 10 most recent of N". The snapshot the article points to is always among them: only a publish creates a snapshot, and it moves the pointer to that new, newest snapshot.
 - **Editor state.** There is no Pinia: all editor state belongs to one page and one composable instance. The editor keeps two copies of the draft:
   - `saved`: the last draft returned by the API, plus its `draftVersion`;
   - `form`: what is in the inputs.
@@ -477,7 +489,7 @@ The dependency override was chosen because production code stays unchanged and t
   `isDirty` is a computed comparison of `form` against `saved` on title, body, and tags. So typing a change and then reverting it clears the dirty state. After a successful save, both `form` and `saved` are replaced with the article the API returns, so normalized tags (for example "API" stored as "api") do not leave the editor looking dirty.
 - **One action at a time (busy flag).** While any write is in flight, the editor must not start another one, for example a restore while a save is running.
   - **What it is.** A page-level flag: `useArticleEditor` holds `pendingAction: 'save' | 'publish' | 'unpublish' | 'restore' | 'delete' | 'reload' | null` and a computed `isBusy`. There is one composable instance per editor page, so the flag belongs to that page; there is no global store.
-  - **When it is set.** An action sets `pendingAction` just before its request is sent and clears it in a `finally` block, so a failed request never leaves the page stuck. For actions that need confirmation (publish, restore over unsaved edits, delete, reload latest), the flag is set only **after** the writer confirms. Opening the modal does not lock anything, and cancelling it changes nothing.
+  - **When it is set.** An action sets `pendingAction` just before its request is sent and clears it in a `finally` block, so a failed request never leaves the page stuck. For Publish, the one action that asks first, the flag is set only **after** the writer confirms. Opening the modal does not lock anything, and cancelling it changes nothing.
   - **What the UI does.** While `isBusy`, every action control is disabled: Save, Publish, Unpublish, Reload latest, and Restore and Delete in the history panel. The active one shows a progress label such as "Publishing…".
   - **Protection relies on the disabled state.** There is no separate guard function: setting the flag disables the buttons on Vue's next render, which happens before the browser handles another click. The backend's draft-version check (409) remains the safety net if anything slips through.
   - **Why a flag and not a debounce.** A debounce delays or merges calls based on time, which suits typing, such as search boxes. Here the requirement is "nothing else until this request finishes", however long it takes. A flag expresses exactly that, with no timing values to tune.
@@ -488,23 +500,27 @@ The dependency override was chosen because production code stays unchanged and t
   | `open` | Whether the modal is shown |
   | `title`, `message` | The question and its explanation |
   | `confirmLabel`, `cancelLabel` | Button text (defaults "Confirm" and "Cancel") |
-  | `tone` | `default` or `danger` (danger for delete) |
+  | `tone` | `default` or `danger` (for a destructive action) |
 
   It emits `confirm` and `cancel`. Escape and a backdrop click emit `cancel`. Because everything comes from props, the same component serves every confirmation and updates whenever its props change.
 
-  `useArticleEditor` owns which confirmation is pending: `requestPublish()`, `requestDelete(snapshotId)`, and the others fill a `confirmation` object (`open`, `title`, `message`, `confirmLabel`, `tone`). `confirmPending()` closes it and runs the matching action, which is when the busy flag is set; `cancelPending()` just closes it. The editor view renders one `<ConfirmModal v-bind="confirmation" @confirm="confirmPending" @cancel="cancelPending" />`.
+  `useArticleEditor` owns which confirmation is pending: `requestPublish()` fills a `confirmation` object (`open`, `title`, `message`, `confirmLabel`, `tone`). `confirmPending()` closes it and runs the matching action, which is when the busy flag is set; `cancelPending()` just closes it. The editor view renders one `<ConfirmModal v-bind="confirmation" @confirm="confirmPending" @cancel="cancelPending" />`.
 
-  Publish always asks first: "Publish this draft? Readers will see it immediately." Restore over unsaved edits, delete a snapshot, and reload latest after a conflict use the same component with their own text, so there is one confirmation pattern, not several.
+  Publish is the only action that asks first: "Publish this draft? Readers will see it immediately." Restore, delete a snapshot, and reload latest after a conflict act straight away, to keep the editor simple: restore and reload replace unsaved edits without asking, and delete removes the snapshot without asking (the snapshot the article points to still cannot be deleted).
 - **Save routing.** The editor has one Save action backed by two endpoints. With no article id yet (`/admin/new`), Save calls `POST /api/admin/articles`; on 201 the app takes the returned id and draft version and navigates to `/admin/articles/:id`. From then on, Save calls `PATCH /api/admin/articles/{id}/draft` with the loaded `expectedDraftVersion`. The endpoints stay separate because only create accepts a slug and checks it is unique, and only save checks the draft version.
+- **New article form.** A new article starts with the title "Untitled article" and a short body that shows the supported Markdown, for the writer to replace. Like any new form, it is held only in the browser until the first save.
+- **Slug generation.** The writer never types a slug. `lib/slug.ts` makes one of 10 random lowercase letters with `crypto.getRandomValues` (26¹⁰, about 1.4 × 10¹⁴ possibilities, so a clash is practically impossible). `useArticleEditor` makes one when the new form opens and again after a 409 "Slug already exists", and sends it with the first save. The new form has no slug field; once the article exists, the editor shows its slug read-only.
+- **Body and preview.** `ArticleEditorForm` shows the body and its preview as two tabs in the same place, so switching between them does not move the page. The preview renders the unsaved body and sends nothing.
+- **Form validation.** The fields are one `<form>` and Save is its submit button, so the browser checks them before anything is sent. Native constraint validation covers what it can (`required` on title and body, `maxlength` 200 and 50,000); `setCustomValidity` adds the rest, with the same native message: title or body that is only spaces, more than 20 tags, or a tag over 100 characters. The limits live in `lib/fieldValidation.ts` and match the Pydantic rules in Decision 6; the API remains the authority, so anything that slips through is still a 422. If the body is invalid while the Preview tab is open, the editor switches back to the Body tab so the browser can point at it.
 - **Unsaved-change protection.** Publish is disabled when `isDirty` is true, with the hint "Save your changes before publishing". There is deliberately no leave-page warning; it is out of scope.
-- **Conflicts.** A 409 from save, restore, or publish shows a banner, keeps `form` as it is, and offers "Reload latest". That action fetches the article and replaces both `form` and `saved`, after the writer confirms.
+- **Conflicts.** A 409 from save, restore, or publish shows a banner, keeps `form` as it is, and offers "Reload latest". That action fetches the article and its snapshot list and replaces both `form` and `saved` straight away; the banner's text, not a dialog, tells the writer their edits will be replaced.
 - **Errors.** A 503 shows the API's `title` and `message` as a page-level error and does not retry.
 - **Markdown.** `lib/markdown.ts` exports one `markdown-it` instance with `html: false` and the default `validateLink`, which rejects `javascript:`, `vbscript:`, `file:`, and non-image `data:` URLs. It is used by the preview, snapshot view, and public article page through one `MarkdownView` component. The output is inserted with `v-html` only from this renderer.
 - **Styling: native CSS and design tokens.** Styles are plain CSS with no preprocessor. Tokens are CSS custom properties, and component styles use native CSS nesting (`&`). The files in `styles/`:
 
   | File | Contents |
   |---|---|
-  | `tokens.css` | Everything on `:root`: color tokens (`--color-text`, `--color-text-muted`, `--color-bg`, `--color-surface`, `--color-border`, `--color-primary`, `--color-danger`, `--color-warning`, `--color-success`, and one per article status); the spacer scale (`--space-0` to `--space-8`, on a 4px base); the type scale (`--font-size-xs` to `--font-size-3xl`, with `--line-height-*` and `--font-weight-*`); radii (`--radius-sm`, `--radius-md`); and the content width and gutter |
+  | `tokens.css` | Everything on `:root`: color tokens (`--color-text`, `--color-text-muted`, `--color-bg`, `--color-surface`, `--color-border`, `--color-primary`, `--color-danger`, `--color-warning`, `--color-success`, and one per article status); the spacer scale (`--space-0` to `--space-8`, on a 4px base); the type scale (`--font-size-xs` to `--font-size-3xl`, with `--line-height-*` and `--font-weight-*`); radii (`--radius-sm`, `--radius-md`); and the content width and gutter. `--font-family-mono` is JetBrains Mono, served by the app from the `@fontsource-variable/jetbrains-mono` package rather than a CDN (one variable font covering every weight), and the shared `.mono` class in `typography.css` uses it for tabular data (slugs, version numbers, timestamps) |
   | `grid.css` | A 12-column CSS grid: a `.container` with the content width and page gutter, `.grid`, and `.col-span-1` to `.col-span-12`. No breakpoints: mobile layouts are out of scope |
   | `typography.css` | Base element styles (body, headings, code, links) and the rendered-Markdown styles, built only from tokens |
   | `main.css` | Imports the above; imported once in `main.ts` |
@@ -515,6 +531,8 @@ The dependency override was chosen because production code stays unchanged and t
   - no new custom properties (`--…` definitions).
 
   A new value is added to `tokens.css` first, then used. The rule is checked by a search of `src/components` and `src/views` for hex colors, `px`/`rem` literals, and `--` definitions (task 5.6). ESLint and Prettier do not check CSS values, and Stylelint is not added, to keep tooling minimal.
+
+  **Property order.** Inside each rule, properties go from the outside in: position (`position`, `inset`, `z-index`); layout (`display`, `flex-*`, `align-*`, `gap`, `grid-*`, `list-style`); box (`width`, `height` and their limits, `margin`, `padding`, `overflow`); border (`border`, `border-radius`); visual (`background`, `color`, `box-shadow`, `opacity`); typography (`font-*`, `line-height`, `text-*`); and the rest (`cursor`, `transition`, `transform`). Position and layout come first because they decide how a size applies at all. Like the tokens-only rule, the order is kept by hand: no tool sorts or checks it.
 
 ### 9. Invariants and edge cases
 
@@ -606,7 +624,10 @@ The **live** snapshot is the one the pointer names while the status is `publishe
 - [Publishing unchanged content creates duplicate snapshots] → Intended for now. Idempotent publish is a known stretch goal and is out of scope.
 - [The writer's article list is ordered newest `updatedAt` first] → The brief only fixes the order of version history. We chose most recently updated first so the articles a writer is working on come to the top. Because `updated_at` changes only when the draft changes, publishing or unpublishing does not reorder the list.
 - [Saving a draft with no changes is accepted] → The API does not compare the submitted draft with the stored one, so an identical save still succeeds, increments `draft_version`, and updates `updated_at`. No data is lost, but another writer holding the old version will get a 409 they didn't strictly need. The editor could disable Save while `isDirty` is false, and the backend could skip the update when nothing changed; neither is in scope.
-- [No slug collision handling, and the slug race is not tested directly] → A slug that is already taken is rejected with 409; there is no automatic suffix or suggestion. If two creates with the same slug arrive at the same moment, both can pass the application check, and the database's `UNIQUE(slug)` constraint rejects the second, which the error mapping turns into a 409 (Decision 6). The ordinary duplicate is tested (task 2.3), but no test forces a real two-request race. Acceptable with a single writer; collision handling is a known stretch goal.
+- [Validation rules written twice] → The input limits exist in the Pydantic models and in `lib/fieldValidation.ts`, so changing one means changing the other. If they drift apart, the API's 422 still rejects bad input; the writer just sees the generic "Invalid request" instead of a message on the field.
+- [History shows only 10 snapshots] → Older snapshots cannot be viewed, restored, or deleted from the editor until newer ones are deleted; the API still lists them all. Paging through history is left out with the rest of search and pagination.
+- [Random slugs] → Public URLs such as `/articles/kqzmfwtrba` say nothing about the article. This keeps the create form to title, body, and tags, and avoids collisions between slugs built from similar titles. A readable or editable slug is a stretch goal.
+- [No slug collision handling, and the slug race is not tested directly] → A slug that is already taken is rejected with 409; there is no automatic suffix or suggestion in the API. With random slugs a clash is very unlikely, and if one happens the form generates a new slug for the next save. If two creates with the same slug arrive at the same moment, both can pass the application check, and the database's `UNIQUE(slug)` constraint rejects the second, which the error mapping turns into a 409 (Decision 6). The ordinary duplicate is tested (task 2.3), but no test forces a real two-request race. Acceptable with a single writer; collision handling is a known stretch goal.
 - [The slug is not derived from the title] → The writer types the slug when creating the article; it is not generated from the title and does not follow later title changes. This keeps public URLs stable. Generating it from the title, with automatic suffixes on collisions, would be a later addition.
 - [No audit log] → Nothing records who did what and when beyond the timestamps already stored: `created_at`, `updated_at`, `published_at`, and each snapshot's `created_at`. There is no history of unpublishes, restores, or deletions, and no record of who acted, since there are no users. Acceptable with a single trusted writer and no authentication. The next step is an `article_events` table (article, action, actor, time) written inside the same transaction as each write. With users in place, sensitive actions such as publish or restore could then notify reviewers or require explicit approval.
 - [No rate limiting] → The API accepts any number of requests. Acceptable for an internal tool with no public write access; the public endpoints are read-only and cheap. Adding limits later belongs in middleware or in front of the app, for example a reverse proxy.
@@ -621,7 +642,7 @@ The **live** snapshot is the one the pointer names while the status is `publishe
 
   Unit tests for `services/` and `repositories/` were considered and rejected for now: the services are thin glue over the repositories, every branch that matters already runs in the HTTP tests, and a mocked repository would test call order rather than behavior.
 - [The rollback test recognises the UPDATE by its SQL text] → If the statement is reworded, the test fails loudly, because the publish then succeeds and its assertions break. So it cannot pass silently.
-- [No automated frontend or end-to-end tests] → Frontend behavior, including the publish modal, the busy flag, and Markdown safety, is checked by hand. Nothing tests the full path from browser to database automatically, so a UI regression, or a mismatch between the frontend and the API, would only be caught by the manual walkthrough (task 6.2). This is accepted because the lifecycle invariants are enforced and tested in the backend, so a UI bug cannot corrupt data. Next steps, in order: Vitest tests for the composables (where the logic lives, so no page rendering is needed), then a few Playwright end-to-end tests for create, publish, restore, and unpublish.
+- [Minimal frontend tests] → Beyond the two mocked-API checks (Decision 7), frontend behavior, including the publish modal, the busy flag, and Markdown safety, is checked by hand. The checks use a fake API, so a mismatch between the frontend and the real API would still only be caught by the manual walkthrough (task 6.2). This is accepted because the lifecycle invariants are enforced and tested in the backend, so a UI bug cannot corrupt data. Next steps, in order: Vitest tests for the composables (where the logic lives, so no page rendering is needed), then Playwright tests against the real backend for restore and the other flows.
 - [The tokens-only rule is checked by a search, not a linter] → Cheap and enough for one developer. A Stylelint config with `color-no-hex` and unit restrictions would enforce it automatically.
 - [Native CSS nesting needs a current browser (Chrome 120+, Safari 17.2+, Firefox 117+)] → Fine for an internal tool and a reviewer's machine. Older browsers would need a build-time step such as Lightning CSS, which Vite supports.
 - [The busy flag relies on buttons disabling before a second click, with no separate guard] → Vue re-renders before the browser handles the next click, so this holds in practice. If it ever did not, the backend's draft-version 409 stops a duplicate save or publish from overwriting anything.

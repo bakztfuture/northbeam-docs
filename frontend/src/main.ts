@@ -1,3 +1,4 @@
+import '@fontsource-variable/jetbrains-mono'
 import './styles/main.css'
 import { createApp } from 'vue'
 import App from './App.vue'

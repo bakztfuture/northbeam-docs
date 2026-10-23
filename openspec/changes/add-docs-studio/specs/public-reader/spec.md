@@ -56,7 +56,7 @@ A public read of a slug that is draft-only, unpublished, or does not exist SHALL
 - **THEN** the API returns 404, identical to the draft-only and unpublished cases
 
 ### Requirement: Public reader pages
-The frontend SHALL provide a public list page showing each published article's title, tags, and publication date, and an article page that renders the live snapshot's Markdown. An article the API reports as not found SHALL show a "not found" page.
+The frontend SHALL provide a public list page showing each published article's title and publication date, and an article page that renders the live snapshot's Markdown. An article the API reports as not found SHALL show a "not found" page.
 
 #### Scenario: Reader opens an article
 - **WHEN** a reader selects an article from the public list
