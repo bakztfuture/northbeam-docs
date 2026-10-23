@@ -1,0 +1,81 @@
+/* The one stylesheet entry point, imported once in main.ts. */
+@import './tokens.css';
+@import './grid.css';
+@import './typography.css';
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* Shared controls: buttons, inputs, and labels are used by every page. */
+button {
+  padding: var(--space-2) var(--space-4);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: var(--color-surface);
+  }
+
+  &:disabled {
+    opacity: var(--opacity-disabled);
+    cursor: not-allowed;
+  }
+
+  &.button-primary {
+    border-color: var(--color-primary);
+    background: var(--color-primary);
+    color: var(--color-text-inverse);
+
+    &:hover:not(:disabled) {
+      background: var(--color-primary-hover);
+    }
+  }
+
+  &.button-danger {
+    border-color: var(--color-danger);
+    background: var(--color-danger);
+    color: var(--color-text-inverse);
+
+    &:hover:not(:disabled) {
+      background: var(--color-danger-hover);
+    }
+  }
+}
+
+input,
+textarea {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-md);
+  font: inherit;
+  color: var(--color-text);
+  background: var(--color-bg);
+
+  &:read-only {
+    background: var(--color-surface);
+    color: var(--color-text-muted);
+  }
+}
+
+textarea {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  resize: vertical;
+}
+
+label {
+  display: block;
+  margin-bottom: var(--space-1);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}

@@ -438,9 +438,11 @@ The dependency override was chosen because production code stays unchanged and t
   |---|---|
   | `/` | public list |
   | `/articles/:slug` | public article |
-  | `/studio` | writer article list |
-  | `/studio/new` | create form |
-  | `/studio/articles/:id` | editor + history panel |
+  | `/admin` | admin article list |
+  | `/admin/new` | editor, create mode (form only, nothing stored until the first save) |
+  | `/admin/articles/:id` | editor + history panel |
+
+  `/admin/new` and `/admin/articles/:id` are the same view, `ArticleEditorView`; with no id it shows only the form.
 
 - **Layers.** Data flows one way, and each layer has one job:
 
@@ -493,7 +495,7 @@ The dependency override was chosen because production code stays unchanged and t
   `useArticleEditor` owns which confirmation is pending: `requestPublish()`, `requestDelete(snapshotId)`, and the others fill a `confirmation` object (`open`, `title`, `message`, `confirmLabel`, `tone`). `confirmPending()` closes it and runs the matching action, which is when the busy flag is set; `cancelPending()` just closes it. The editor view renders one `<ConfirmModal v-bind="confirmation" @confirm="confirmPending" @cancel="cancelPending" />`.
 
   Publish always asks first: "Publish this draft? Readers will see it immediately." Restore over unsaved edits, delete a snapshot, and reload latest after a conflict use the same component with their own text, so there is one confirmation pattern, not several.
-- **Save routing.** The editor has one Save action backed by two endpoints. With no article id yet (`/studio/new`), Save calls `POST /api/admin/articles`; on 201 the app takes the returned id and draft version and navigates to `/studio/articles/:id`. From then on, Save calls `PATCH /api/admin/articles/{id}/draft` with the loaded `expectedDraftVersion`. The endpoints stay separate because only create accepts a slug and checks it is unique, and only save checks the draft version.
+- **Save routing.** The editor has one Save action backed by two endpoints. With no article id yet (`/admin/new`), Save calls `POST /api/admin/articles`; on 201 the app takes the returned id and draft version and navigates to `/admin/articles/:id`. From then on, Save calls `PATCH /api/admin/articles/{id}/draft` with the loaded `expectedDraftVersion`. The endpoints stay separate because only create accepts a slug and checks it is unique, and only save checks the draft version.
 - **Unsaved-change protection.** Publish is disabled when `isDirty` is true, with the hint "Save your changes before publishing". There is deliberately no leave-page warning; it is out of scope.
 - **Conflicts.** A 409 from save, restore, or publish shows a banner, keeps `form` as it is, and offers "Reload latest". That action fetches the article and replaces both `form` and `saved`, after the writer confirms.
 - **Errors.** A 503 shows the API's `title` and `message` as a page-level error and does not retry.

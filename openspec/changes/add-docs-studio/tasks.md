@@ -71,15 +71,15 @@ Six groups, built layer by layer. Each group is one commit and is reviewable on 
 
 ## 4. Frontend foundations
 
-- [ ] 4.1 Styles in `src/styles/`: `tokens.css` (colors, spacer scale, type scale with line heights and weights, radii, content width and gutter, all as custom properties on `:root`), `grid.css` (12-column grid, no breakpoints), `typography.css` (base and Markdown styles from tokens only), and `main.css`; README "Styling" section listing the tokens and the tokens-only rule
-- [ ] 4.2 `src/services/` (`http.ts` throwing `ApiError`, `adminArticles.ts`, `publicArticles.ts`, and `types.ts`, which mirrors the response shapes in design Decision 5) and `src/lib/markdown.ts` (one markdown-it instance, `html: false`, safe links) with the `MarkdownView` component
-- [ ] 4.3 The reusable `ConfirmModal` (props `open`, `title`, `message`, `confirmLabel`, `cancelLabel`, `tone`; emits `confirm` and `cancel`; Escape and a backdrop click cancel), the routes, the shared layout, and a page-level 503 error display that does not retry
-- [ ] 4.4 Check in the browser: `npm run build` succeeds; each route loads; a duplicate-slug create surfaces as an `ApiError` with code 409; supported Markdown renders while raw HTML and `javascript:` links do not; the modal shows its props and emits the right event for each way of closing
+- [x] 4.1 Styles in `src/styles/`: `tokens.css` (colors, spacer scale, type scale with line heights and weights, radii, content width and gutter, all as custom properties on `:root`), `grid.css` (12-column grid, no breakpoints), `typography.css` (base and Markdown styles from tokens only), and `main.css`
+- [x] 4.2 `src/services/` (`http.ts` throwing `ApiError`, `adminArticles.ts`, `publicArticles.ts`, and `types.ts`, which mirrors the response shapes in design Decision 5) and `src/lib/markdown.ts` (one markdown-it instance, `html: false`, safe links) with the `MarkdownView` component
+- [x] 4.3 The reusable `ConfirmModal` (props `open`, `title`, `message`, `confirmLabel`, `cancelLabel`, `tone`; emits `confirm` and `cancel`; Escape and a backdrop click cancel), the routes, the shared layout, and a page-level 503 error display that does not retry
+- [x] 4.4 Check in the browser: `npm run build` succeeds; each route loads; a duplicate-slug create surfaces as an `ApiError` with code 409; supported Markdown renders while raw HTML and `javascript:` links do not; the modal shows its props and emits the right event for each way of closing
 
 ## 5. Frontend: writer and public UI
 
-- [ ] 5.1 `useArticleList` and the studio list view (title, slug, status, "New article")
-- [ ] 5.2 `useArticleEditor` (`saved`, `form`, `isDirty`, the snapshot list, conflict and error state, the page-level busy flag, the pending `confirmation`, and every action, calling only `src/services/`), the create and editor views, and `ArticleForm` with a live preview. Save calls `POST` on the first save, then `PATCH`
+- [ ] 5.1 `useArticleList` and the admin article list view (title, slug, status, "New article")
+- [ ] 5.2 `useArticleEditor` (`saved`, `form`, `isDirty`, the snapshot list, conflict and error state, the page-level busy flag, the pending `confirmation`, and every action, calling only `src/services/`), `ArticleEditorView`, which serves both `/admin/new` and `/admin/articles/:id`, and `ArticleForm` with a live preview. Save calls `POST` on the first save, then `PATCH`
 - [ ] 5.3 **Highlighted:** the publish flow
   - Publish is disabled while `isDirty`, with "Save your changes before publishing"
   - Publish opens `ConfirmModal`, and only Confirm sends the request; Unpublish appears only when `published`
@@ -93,7 +93,7 @@ Six groups, built layer by layer. Each group is one commit and is reviewable on 
 
 ## 6. README and final check
 
-- [ ] 6.1 Complete the README: how to use the studio, the invariants and edge-case tables (design Decision 9), every tradeoff from the design's Risks / Trade-offs section (including at least one paragraph on a tradeoff made under time pressure and what would change with more time), and what is missing or next
+- [ ] 6.1 Complete the README: how to use the admin, the invariants and edge-case tables (design Decision 9), every tradeoff from the design's Risks / Trade-offs section (including at least one paragraph on a tradeoff made under time pressure and what would change with more time), and what is missing or next
 - [ ] 6.2 From a fresh clone, run `make setup`, `make lint`, `make test`, and `make dev`, and walk through create, edit, publish (confirm and cancel), edit again, view public, restore, unpublish, and delete; every step behaves as the specs describe
 
 ## Workflow follow-up

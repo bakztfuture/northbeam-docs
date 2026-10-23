@@ -10,7 +10,7 @@ Gives the internal writer a minimal browser interface over the writer API (artic
 The writer UI SHALL list every article with its title, slug, and status, let the writer open an article, and let the writer start a new one.
 
 #### Scenario: Writer sees all articles
-- **WHEN** the writer opens the studio
+- **WHEN** the writer opens the admin
 - **THEN** every article is listed with its status (`draft`, `published`, or `unpublished`)
 
 ### Requirement: Create an article from a local form

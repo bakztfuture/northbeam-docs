@@ -1,0 +1,94 @@
+/* Base element styles and the rendered-Markdown styles, built only from tokens. */
+body {
+  margin: 0;
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-md);
+  line-height: var(--line-height-normal);
+  color: var(--color-text);
+  background: var(--color-bg);
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0 0 var(--space-3);
+  line-height: var(--line-height-tight);
+  font-weight: var(--font-weight-semibold);
+}
+
+h1 {
+  font-size: var(--font-size-3xl);
+}
+h2 {
+  font-size: var(--font-size-2xl);
+}
+h3 {
+  font-size: var(--font-size-xl);
+}
+h4 {
+  font-size: var(--font-size-lg);
+}
+
+p {
+  margin: 0 0 var(--space-4);
+}
+
+a {
+  color: var(--color-primary);
+
+  &:hover {
+    color: var(--color-primary-hover);
+  }
+}
+
+code,
+pre {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+}
+
+/* Rendered Markdown (MarkdownView) */
+.markdown {
+  line-height: var(--line-height-relaxed);
+
+  & ul,
+  & ol {
+    margin: 0 0 var(--space-4);
+    padding-left: var(--space-5);
+  }
+
+  & li + li {
+    margin-top: var(--space-1);
+  }
+
+  & blockquote {
+    margin: 0 0 var(--space-4);
+    padding-left: var(--space-4);
+    border-left: var(--space-1) solid var(--color-border);
+    color: var(--color-text-muted);
+  }
+
+  & :not(pre) > code {
+    padding: var(--space-0) var(--space-1);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface);
+  }
+
+  & pre {
+    margin: 0 0 var(--space-4);
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
+    overflow-x: auto;
+    line-height: var(--line-height-normal);
+  }
+
+  & img {
+    max-width: 100%;
+  }
+
+  & > :last-child {
+    margin-bottom: 0;
+  }
+}
