@@ -5,7 +5,7 @@ import { defineConfig, devices } from '@playwright/test'
 const port = 5180
 
 export default defineConfig({
-  testDir: './e2e',
+  testDir: './tests/e2e',
   fullyParallel: true,
   reporter: 'list',
   use: {

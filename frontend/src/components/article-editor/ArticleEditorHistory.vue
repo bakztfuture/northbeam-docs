@@ -6,11 +6,10 @@ import type { EditorAction } from '../../composables/article-editor/useArticleEd
 import { formatDateTime } from '../../lib/format'
 import type { SnapshotListItem } from '../../services/types'
 
-// The article's most recent snapshots, newest first; `total` counts all of them. The snapshot
+// Every snapshot of the article, newest first; a long history scrolls inside the panel. The snapshot
 // the article points to is marked and cannot be deleted.
 defineProps<{
   snapshots: SnapshotListItem[]
-  total: number
   pendingAction: EditorAction | null
   pendingSnapshotId: string | null
 }>()
@@ -26,9 +25,6 @@ const emit = defineEmits<{
   <section class="history">
     <h2 class="heading">History</h2>
     <p v-if="!snapshots.length" class="hint">No snapshots yet. Each publish adds one.</p>
-    <p v-if="total > snapshots.length" class="hint limit">
-      Showing the {{ snapshots.length }} most recent of {{ total }}
-    </p>
     <ol v-if="snapshots.length" class="list">
       <li v-for="snapshot in snapshots" :key="snapshot.id" class="item">
         <div class="summary">
@@ -94,17 +90,15 @@ const emit = defineEmits<{
   font-size: var(--font-size-xs);
 }
 
-.limit {
-  margin-bottom: var(--space-3);
-}
-
 .list {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
   list-style: none;
+  max-height: var(--history-max-height);
   margin: var(--space-0);
   padding: var(--space-0);
+  overflow-y: auto;
 }
 
 .item {

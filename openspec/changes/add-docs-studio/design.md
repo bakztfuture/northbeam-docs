@@ -109,7 +109,7 @@ Keeping transactions in services, not repositories, means one service call can c
 
 ### 2. Data model
 
-Two tables. The draft lives on the article row; snapshots are a separate append-only table.
+Two tables. The draft lives on the article row; snapshots are a separate table of immutable snapshots with controlled deletion (any snapshot except the one the article points to can be deleted).
 
 ```
 articles                                   article_versions
@@ -481,7 +481,7 @@ The dependency override was chosen because production code stays unchanged and t
 
   Restore and delete live in `useArticleEditor`, not in a separate history composable, so they share the editor's busy flag and refresh the same state. After a delete, it reloads the snapshot list, so the "current" marker never points at the wrong snapshot.
 - **After publish and unpublish.** A successful publish navigates to the article's public page (`/articles/:slug`), so the writer sees exactly what readers now see; a successful unpublish navigates to the public list, where the article is gone. The editor is left behind, so it does not refresh its own state; opening it again loads the article and its history fresh. A failed publish or unpublish keeps the writer in the editor with the conflict or error shown.
-- **History limit.** The history panel shows the 10 most recent snapshots. The API still returns every snapshot; `useArticleEditor` keeps the full list and passes the newest 10 to the panel, with the total so the panel can say "Showing the 10 most recent of N". The snapshot the article points to is always among them: only a publish creates a snapshot, and it moves the pointer to that new, newest snapshot.
+- **History list.** The history panel lists every snapshot the API returns, newest first, as the brief asks. The list caps its own height (`--history-max-height`) and scrolls inside the panel, so a long history does not stretch the editor page.
 - **Editor state.** There is no Pinia: all editor state belongs to one page and one composable instance. The editor keeps two copies of the draft:
   - `saved`: the last draft returned by the API, plus its `draftVersion`;
   - `form`: what is in the inputs.
@@ -536,7 +536,7 @@ The dependency override was chosen because production code stays unchanged and t
 
 ### 9. Invariants and edge cases
 
-Each invariant and edge case below is also a requirement or scenario in the specs; this section collects them in one place and shows where each is enforced and tested. The README reuses both tables.
+Each invariant and edge case below is also a requirement or scenario in the specs; this section collects them in one place and shows where each is enforced and tested.
 
 **Terms used below.** Two separate fields describe an article's publication state, and they change at different times:
 
@@ -625,7 +625,6 @@ The **live** snapshot is the one the pointer names while the status is `publishe
 - [The writer's article list is ordered newest `updatedAt` first] → The brief only fixes the order of version history. We chose most recently updated first so the articles a writer is working on come to the top. Because `updated_at` changes only when the draft changes, publishing or unpublishing does not reorder the list.
 - [Saving a draft with no changes is accepted] → The API does not compare the submitted draft with the stored one, so an identical save still succeeds, increments `draft_version`, and updates `updated_at`. No data is lost, but another writer holding the old version will get a 409 they didn't strictly need. The editor could disable Save while `isDirty` is false, and the backend could skip the update when nothing changed; neither is in scope.
 - [Validation rules written twice] → The input limits exist in the Pydantic models and in `lib/fieldValidation.ts`, so changing one means changing the other. If they drift apart, the API's 422 still rejects bad input; the writer just sees the generic "Invalid request" instead of a message on the field.
-- [History shows only 10 snapshots] → Older snapshots cannot be viewed, restored, or deleted from the editor until newer ones are deleted; the API still lists them all. Paging through history is left out with the rest of search and pagination.
 - [Random slugs] → Public URLs such as `/articles/kqzmfwtrba` say nothing about the article. This keeps the create form to title, body, and tags, and avoids collisions between slugs built from similar titles. A readable or editable slug is a stretch goal.
 - [No slug collision handling, and the slug race is not tested directly] → A slug that is already taken is rejected with 409; there is no automatic suffix or suggestion in the API. With random slugs a clash is very unlikely, and if one happens the form generates a new slug for the next save. If two creates with the same slug arrive at the same moment, both can pass the application check, and the database's `UNIQUE(slug)` constraint rejects the second, which the error mapping turns into a 409 (Decision 6). The ordinary duplicate is tested (task 2.3), but no test forces a real two-request race. Acceptable with a single writer; collision handling is a known stretch goal.
 - [The slug is not derived from the title] → The writer types the slug when creating the article; it is not generated from the title and does not follow later title changes. This keeps public URLs stable. Generating it from the title, with automatic suffixes on collisions, would be a later addition.

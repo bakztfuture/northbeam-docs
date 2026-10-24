@@ -1,5 +1,7 @@
 # Northbeam Docs
 
+![The public article list: the Northbeam Docs navbar above published articles with their dates and tags](docs/images/public-home.png)
+
 An internal docs studio: writers edit a single draft per article, publish it as an immutable numbered snapshot, and public readers only ever see the live snapshot.
 
 - `backend/`: FastAPI + SQLite API (`/api/admin`, `/api/public`, `/api/health`)
@@ -66,14 +68,14 @@ make format
 
 ## Data model
 
-Two SQLite tables. The single mutable draft lives on the article row; published snapshots are a separate, append-only table.
+Two SQLite tables. The single mutable draft lives on the article row; published snapshots are a separate table of immutable snapshots with controlled deletion.
 
 | Table | Holds |
 |---|---|
 | `articles` | `id`, `slug` (unique, fixed after creation), `status` (`draft`, `published`, or `unpublished`), the draft (`draft_title`, `draft_body`, `draft_tags` as a JSON array), `draft_version` (incremented on every draft change, used for conflict detection), `last_published_version_number` (the snapshot counter), `current_published_version_id` (**the pointer**: the most recently published snapshot), `published_at` (first publication time), `created_at`, `updated_at` |
 | `article_versions` | One immutable snapshot per publish: `id`, `article_id`, `version_number`, `title`, `body`, `tags`, `created_at` |
 
-**Why this shape.** Drafts and published content are kept physically separate, so editing a draft can never change what readers see: the public API reads only from `article_versions`, through the pointer, and never selects a draft column. The draft sits on the article row rather than in its own table because there is exactly one draft per article, so a separate table would add a join without adding a guarantee. Snapshots get their own append-only table because every publish must leave behind a record that can be inspected and restored but never edited. With this split, each lifecycle rule maps onto a database constraint or trigger (table below), so the rules hold even against a bug in the application or a write made with direct SQL. The database has no ORM and only two tables, because the constraints are the point and the SQL is small enough to read directly.
+**Why this shape.** Drafts and published content are kept physically separate, so editing a draft can never change what readers see: the public API reads only from `article_versions`, through the pointer, and never selects a draft column. The draft sits on the article row rather than in its own table because there is exactly one draft per article, so a separate table would add a join without adding a guarantee. Snapshots get their own table because every publish must leave behind a record that can be inspected and restored but never edited; a snapshot can be removed only by an explicit delete, and never while the article points to it. With this split, each lifecycle rule maps onto a database constraint or trigger (table below), so the rules hold even against a bug in the application or a write made with direct SQL. The database has no ORM and only two tables, because the constraints are the point and the SQL is small enough to read directly.
 
 The lifecycle rules are enforced by the database itself, not only by application code:
 
@@ -121,6 +123,24 @@ CHECK and trigger violations return 500 on purpose: the API never attempts those
 
 ## A trade-off made under time pressure
 
-The frontend has only minimal automated tests: two Playwright end-to-end checks that validate the frontend boundary along the major flow, against a mocked API. There are no unit tests yet, for example on the composables. With limited time, I spent the testing effort where a bug would do the most damage, the content lifecycle. The backend suite covers every invariant and edge case against a real SQLite file: snapshot immutability, the atomic publish with a forced rollback, stale-draft conflicts, the protected snapshot, and concurrent publishes. Because those rules are enforced in the database and API, a UI bug can show the wrong thing or block an action, but it can't publish a draft by accident or corrupt a snapshot. So beyond those two checks, the frontend is checked by hand: the publish confirmation, disabling Publish while there are unsaved edits, the busy flag, conflict handling, and Markdown safety. The cost is that a UI regression, or a mismatch between what the frontend sends and what the API expects, only shows up if someone walks through the app. With more time, I'd start with Vitest unit tests for the composables (`useArticleEditor` above all), since that's where the frontend logic lives: dirty tracking, save routing, the busy flag, and what a 409 or 503 means for the page. Those tests need no rendering and run in milliseconds. Then I'd add a few Playwright end-to-end tests against the real backend for the paths that matter most: create, save, publish (confirming and cancelling), restore, unpublish, and two tabs conflicting on the same draft. That way the full path from browser to database is checked on every change, not just during a manual walkthrough.
+**Unpublish keeps the pointer.** To make unpublish a pure status change, I kept a single pointer column, `current_published_version_id`, doing two jobs: it names the live snapshot while the article is published, and the last published one after it is unpublished. That one decision let the database enforce the lifecycle on its own: the CHECK constraint keeps status, pointer, and `published_at` consistent, and `ON DELETE RESTRICT` protects whatever the pointer names, so the last published snapshot survives an unpublish without any application code. The cost is the delete rule above: while an article is unpublished, its last published snapshot can't be deleted, and the workaround is to republish and then delete the old one. With more time, I'd split the pointer into a live snapshot (set only while published) and a separate record of the last published one, so the database would still protect what readers see, and deleting a no-longer-live snapshot would become a deliberate action instead of a dead end.
 
-For the same reason, the editor's composables (`frontend/src/composables/article-editor/`) had a lighter code review than the backend; they were tested by hand and are the first place I'd add the unit tests above.
+## Stretch goals
+
+Instead of the suggested stretch goals, I built two small frontend safeguards that cut down on mistakes without extra backend plumbing:
+
+- **Publish asks first.** A confirmation dialog/modal ("Publish this draft? Readers will see it immediately.") stops accidental publishes, so fewer publish-then-unpublish corrections, and fewer throwaway snapshots, are needed in the first place.
+- **One action at a time.** While a save, publish, unpublish, restore, delete, or reload is running, every other action control and the form are disabled, and the running action shows its progress. This prevents double clicks and overlapping requests from the UI side; the backend's draft-version check (409) remains the safety net.
+
+## What's missing and how I'd approach it
+
+| Missing | Approach |
+|---|---|
+| Frontend unit tests, and E2E tests against the real backend | Vitest for the editor composables (no rendering needed), then Playwright against a real API with a temporary database |
+| Slug form field, editable (the form generates the slug; the API accepts any valid slug) | An optional slug field, prefilled from the title and editable until the first save, with the 409 shown on the field |
+| Slugs are random strings rather than reflecting the title; a clash is rejected with 409 and the form picks a new slug for the next save, but there's no automatic handling (like auto-suffix) | Build the slug from the title (lowercase, hyphens), and on a clash have the API add a suffix (`-2`, `-3`) and retry the insert in the same request |
+| Detecting a draft with no real changes since the last publish (idempotent publish); publishing it again creates an identical snapshot | Compare the draft with the live snapshot: disable Publish in the UI when they match, and in the publish transaction return the existing snapshot instead of inserting a copy |
+| Saving a snapshot without publishing ("Save as version"), as a checkpoint to restore later | Reuse publish's snapshot insert without moving the pointer or changing the status, so readers see nothing new |
+| No audit log of publishing, unpublishing, restoring, or deleting, and no human approval step | An append-only events table (article, action, snapshot, time) written in the same transaction as each action; approvals need users and roles first, then a "pending review" step before publish |
+| Migrations | A small runner that applies numbered SQL files in order and records progress in `PRAGMA user_version` |
+| Deployment (`make start` uses `vite preview`, not a production server) | Serve `frontend/dist/` from nginx or a CDN, forward `/api` to Uvicorn, and run Uvicorn under a process manager |

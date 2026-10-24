@@ -72,6 +72,7 @@
   /* Layout */
   --content-width: 72rem;
   --editor-height: 28rem;
+  --history-max-height: 40rem;
   --reading-width: 46rem;
   --gutter: var(--space-5);
   --grid-gap: var(--space-5);

@@ -22,7 +22,6 @@ const {
   isDirty,
   isLoading,
   snapshots,
-  visibleSnapshots,
   viewedSnapshot,
   error,
   conflict,
@@ -116,8 +115,7 @@ const {
       </div>
       <aside v-if="!isNew" class="col-span-4">
         <ArticleEditorHistory
-          :snapshots="visibleSnapshots"
-          :total="snapshots.length"
+          :snapshots="snapshots"
           :pending-action="pendingAction"
           :pending-snapshot-id="pendingSnapshotId"
           @view="viewSnapshot"

@@ -19,9 +19,6 @@ import { toApiError } from '../errors'
 import { formsDiffer, starterForm, toForm, type ArticleFormFields } from './form'
 import { useConfirmation } from './useConfirmation'
 
-// The history panel shows only the newest snapshots; the API still returns every one.
-const HISTORY_LIMIT = 10
-
 export type EditorAction = 'save' | 'publish' | 'unpublish' | 'restore' | 'delete' | 'reload'
 
 // Everything on the editor page (design Decision 8). `id` is the route's article id, or
@@ -37,8 +34,6 @@ export function useArticleEditor(id: Ref<string | undefined>) {
   let newSlug = randomSlug()
 
   const snapshots = ref<SnapshotListItem[]>([])
-  // The pointed-to snapshot is always the newest, so it is always among these.
-  const visibleSnapshots = computed(() => snapshots.value.slice(0, HISTORY_LIMIT))
   const viewedSnapshot = ref<Snapshot | null>(null)
 
   const isLoading = ref(false)
@@ -271,7 +266,6 @@ export function useArticleEditor(id: Ref<string | undefined>) {
     isDirty,
     isLoading,
     snapshots,
-    visibleSnapshots,
     viewedSnapshot,
     error,
     conflict,

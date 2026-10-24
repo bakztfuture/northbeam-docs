@@ -118,15 +118,15 @@ When a save, restore, or publish returns 409 because the draft changed elsewhere
 - **THEN** the editor shows the latest saved draft and its current draft version
 
 ### Requirement: Version history panel
-The editor SHALL show the article's 10 most recent snapshots, newest first, with version number and creation time, mark the snapshot the article points to, and let the writer view a snapshot rendered, restore it into the draft, or delete it. When the article has more than 10 snapshots, the panel SHALL say how many there are in total.
+The editor SHALL show all of the article's snapshots, newest first, with version number and creation time, mark the snapshot the article points to, and let the writer view a snapshot rendered, restore it into the draft, or delete it. A long history SHALL scroll inside the panel rather than stretch the page.
 
 #### Scenario: View a snapshot
 - **WHEN** the writer selects a snapshot in the history
 - **THEN** its title, tags, and rendered body are shown
 
-#### Scenario: History shows at most 10 (FE)
-- **WHEN** an article has more than 10 snapshots
-- **THEN** the history shows the 10 newest and the message "Showing the 10 most recent of N", where N is the total
+#### Scenario: Every snapshot is listed (FE)
+- **WHEN** an article has many snapshots
+- **THEN** the history lists every one, newest first, and scrolls inside the panel
 
 #### Scenario: Restore from history
 - **WHEN** the writer restores a snapshot

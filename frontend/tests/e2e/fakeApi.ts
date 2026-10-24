@@ -11,7 +11,7 @@ import type {
   PublicArticleListItem,
   Snapshot,
   SnapshotListItem,
-} from '../src/services/types'
+} from '../../src/services/types'
 
 interface StoredArticle {
   article: AdminArticle

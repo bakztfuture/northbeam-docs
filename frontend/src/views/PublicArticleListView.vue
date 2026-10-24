@@ -3,6 +3,7 @@ import IconChevronRightSvg from '../components/icons/IconChevronRightSvg.vue'
 import IconFileTextSvg from '../components/icons/IconFileTextSvg.vue'
 import EmptyState from '../components/EmptyState.vue'
 import ErrorBanner from '../components/ErrorBanner.vue'
+import TagList from '../components/TagList.vue'
 import { usePublicArticles } from '../composables/usePublicArticles'
 import { formatDate } from '../lib/format'
 
@@ -32,6 +33,7 @@ void loadList()
         <div class="content">
           <span class="title">{{ article.title }}</span>
           <span class="date">{{ formatDate(article.publishedAt) }}</span>
+          <TagList :tags="article.tags" />
         </div>
         <IconChevronRightSvg class="chevron" />
       </RouterLink>
